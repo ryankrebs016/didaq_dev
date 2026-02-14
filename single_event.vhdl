@@ -130,7 +130,7 @@ architecture rtl of single_event is
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
 
         rd_data_valid_o : out std_logic; -- data valid signal
-        data_o          : in std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) -- output data 32 bits to match reg size, may need update with 9 bits
+        data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) -- output data 32 bits to match reg size, may need update with 9 bits
 
     );
     end component;
@@ -156,6 +156,7 @@ architecture rtl of single_event is
     signal internal_wr_en : std_logic := '0';
     signal buffers_filled : std_logic := '0';
     signal post_trigger_wait_clks : std_logic_vector(NUM_CHANNELS*10-1 downto 0) := (others=>'0');
+    signal internal_input_data : std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH -1 downto 0);
 
     type post_trigger_waits_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(9 downto 0);
     constant forced_waits : post_trigger_waits_t := (others=>"0000000000");
@@ -170,7 +171,7 @@ architecture rtl of single_event is
     signal event_number : std_logic_vector(23 downto 0) := (others=>'0');
 
     -- TODO: decide pps counter clock
-    signal event_pps_count : std_logic_vector(7 downto 0) := (others=>'0');
+    signal event_pps_count : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_count : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_on_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_on_last_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
@@ -186,8 +187,8 @@ architecture rtl of single_event is
     -- read side stuff
     signal delayed_read_address : std_logic_vector(15 downto 0) := (others=>'0');
     signal ram_rd_en : std_logic := '0';
-    signal ram_read_address : unsigned(8 downto 0) := (others=>'0'); --hardcode 512 depth of 32 bit words for now
-    signal channel_to_read : unsigned(5 downto 0) := (others=>'0');
+    signal ram_read_address : std_logic_vector(8 downto 0) := (others=>'0'); --hardcode 512 depth of 32 bit words for now
+    signal channel_to_read : std_logic_vector(4 downto 0) := (others=>'0');
     signal waveform_read_valid : std_logic := '0';
     signal waveform_read_data : std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
 
@@ -210,8 +211,8 @@ begin
         rd_clk_i => rd_clk_i,
         rd_en_i => ram_rd_en,
         rd_channel_i => channel_to_read,
-        rd_block_i => rad_read_address,
-
+        rd_block_i => ram_read_address,
+        
         rd_data_valid_o => waveform_read_valid, -- figure out clock delay and logic
         data_o => waveform_read_data
 
@@ -233,17 +234,15 @@ begin
             event_clk_on_last_last_pps <= (others=>'0');
             run_number <= (others=>'0');
             event_number <= (others=>'0');
-            for i in 0 to NUM_CHANNELS -1 loop
-                internal_input_data(i) <= (others=>'0');
-            end loop;
+            internal_input_data <= (others=>'0');
+
         elsif rising_edge(wr_clk_i) then
 
             -- remember to assert wr_en_i after readout has happened
             -- write waveforms to buffer and wait for trigger signal to latch meta data
             if wr_en_i then
-                for i in 0 to NUM_CHANNELS-1 loop
-                    internal_input_data(i) <= waveform_data_i((i+1)*NUM_SAMPLES*SAMPLE_LENGTH -1 downto i*NUM_SAMPLES*SAMPLE_LENGTH);
-                end loop;
+                
+                internal_input_data <= waveform_data_i;
                 -- fill trigger meta data on a trigger input
                 if rf_trig_0_i and (not trigger_hold) then
                     rf_trig_0_meta <= rf_trig_0_meta_i;
@@ -310,9 +309,7 @@ begin
                 event_clk_on_last_last_pps <= (others=>'0');
                 run_number <= (others=>'0');
                 event_number <= (others=>'0');
-                for i in 0 to NUM_CHANNELS -1 loop
-                    internal_input_data(i) <= (others=>'0');
-                end loop;
+                internal_input_data <= (others=>'0');
 
             end if;
 
@@ -332,19 +329,19 @@ begin
             -- standard event readout to pump out header, trigger info, and waveforms using a mapped block read
             if rd_en_i and not rd_manual_i then
                 data_valid_o <= '1';
-                delayed_read_address <= read_address_i;
+                delayed_read_address <= rd_address_i;
 
-                if unsigned(read_address_i)>=10 then
+                if unsigned(rd_address_i)>=10 then
                     ram_rd_en <= '1';
-                    channel_to_read <= (unsigned(read_address_i)-10)/512;
-                    ram_read_address <= (unsigned(read_address_i)-10) rem 512;
+                    channel_to_read <= std_logic_vector((unsigned(rd_address_i)-10)/512);
+                    ram_read_address <= std_logic_vector((unsigned(rd_address_i)-10) rem 512);
                 end if;
 
                 -- will need to add in bit selects if not packing tightly
                 if unsigned(delayed_read_address)=0 then
-                    data_o <= run_number;
+                    data_o <= x"0000" & run_number;
                 elsif unsigned(delayed_read_address)=1 then
-                    data_o <= event_number;
+                    data_o <= x"00" & event_number;
                 elsif unsigned(delayed_read_address)=2 then
                     data_o <= event_pps_count;
 
@@ -356,16 +353,16 @@ begin
                     data_o <= event_clk_on_last_last_pps;
 
                 elsif unsigned(delayed_read_address)=6 then
-                    data_o <= which_trigger;
+                    data_o <= x"000000" & which_trigger;
                 elsif unsigned(delayed_read_address)=7 then
-                    data_o <= rf_trig_0_meta;
+                    data_o <= x"00" & rf_trig_0_meta;
                 elsif unsigned(delayed_read_address)=8 then
-                    data_o <= rf_trig_1_meta;
+                    data_o <= x"00" & rf_trig_1_meta;
                 elsif unsigned(delayed_read_address)=9 then
-                    data_o <= pa_trig_meta;
+                    data_o <= x"00000" & pa_trig_meta;
 
                 elsif unsigned(delayed_read_address) >= 10 then
-                    if rd_data_valid_o then
+                    if waveform_read_valid then
                         data_o <= waveform_read_data;
                     else
                         data_o <= x"ffffffff";
@@ -375,7 +372,7 @@ begin
             elsif rd_manual_i then
                 -- instead read channel and block waveforms maually using rd_manual_i, rd_channel_i, and rd_block_i for sample calibration?
                 ram_rd_en <= '1';
-                data_valid_o <= rd_data_valid_o;
+                data_valid_o <= waveform_read_valid;
                 channel_to_read <= std_logic_vector(rd_channel_i);
                 ram_read_address <= std_logic_vector(rd_block_i);
                 data_o <= waveform_read_data;

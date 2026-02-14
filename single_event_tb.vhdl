@@ -40,7 +40,7 @@ component single_event is
         
         pps_trig_i : in std_logic; -- pps trig from pps holdoff
         rf_trig_0_i : in std_logic;
-        rf_trig_0_meta_i: in std_logic_vector(NUM_CHANNELS_1 downto 0);
+        rf_trig_0_meta_i: in std_logic_vector(NUM_CHANNELS-1 downto 0);
         rf_trig_1_i : in std_logic;
         rf_trig_1_meta_i: in std_logic_vector(NUM_CHANNELS-1 downto 0);
         pa_trig_i : in std_logic;
@@ -58,13 +58,13 @@ component single_event is
 
         rd_manual_i : in std_logic;
         rd_channel_i : in std_logic_vector(4 downto 0);
-        rd_block_i : in std_logic_vector(4 downto 0);
+        rd_block_i : in std_logic_vector(8 downto 0);
 
         -- register sized data out
         read_done_o : std_logic;
         data_valid_o : out std_logic;
         data_o : out std_logic_vector(31 downto 0);
-        data_ready_rd_clk_o : out std_logic; -- cdc using data ready o?
+        data_ready_rd_clk_o : out std_logic -- cdc using data ready o?
 
     );
 end component;
@@ -121,8 +121,8 @@ signal read_enable : std_logic := '0';
 signal read_address : std_logic_vector(15 downto 0) := (others=>'0');
 
 signal read_manual : std_logic := '0';
-signal read_channel : std_logic_vector (4 downto 0) := (others=>'0');
-signal read_block : std_logic_vector (8 downto 0) := (others=>'0');
+signal read_channel : std_logic_vector(4 downto 0) := (others=>'0');
+signal read_block : std_logic_vector(8 downto 0) := (others=>'0');
 signal read_valid : std_logic := '0';
 signal samples_out: std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
 signal read_done : std_logic := '0';
@@ -156,8 +156,8 @@ begin
         event_number_i => event_number,
         
         pps_clk_i => clock,
-        event_timing_enable_i => open,
-        clk_count_i => clock_counter,
+        event_timing_enable_i => '1',
+        clk_count_i => std_logic_vector(clock_counter),
         pps_count_i => pps_counter,
         clk_on_last_pps_i => clk_on_last_pps,
         clk_on_last_last_pps_i => clk_on_last_last_pps,
@@ -167,12 +167,15 @@ begin
         rf_trig_0_meta_i => rf_trig_0_meta,
         rf_trig_1_i => rf_trig_1,
         rf_trig_1_meta_i => rf_trig_1_meta,
+        pa_trig_i => pa_trig,
+        pa_trig_meta_i => pa_trig_meta,
         soft_trig_i => soft_trig,
         ext_trig_i => ext_trig,
+
         data_ready_o => wr_finished,
 
         rd_clk_i => clock,
-        rf_en_i => read_enable,
+        rd_en_i => read_enable,
         rd_address_i => read_address,
         
         rd_manual_i => read_manual,
@@ -211,7 +214,7 @@ begin
             while do_loop loop
                 wait for 4 ns;
 
-updsatteeeeeeeeeeeeeeeeee ssssssssssttttttttttttttkiiiiiiiiiiiiiiiimmmmmmmmmmmmmmmm
+--updsatteeeeeeeeeeeeeeeeee ssssssssssttttttttttttttkiiiiiiiiiiiiiiiimmmmmmmmmmmmmmmm
                 for i in 0 to NUM_CHANNELS-1 loop
                     if i =0 then
                         int_samples(i)<=clock_counter;
