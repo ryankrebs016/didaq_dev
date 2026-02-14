@@ -85,6 +85,7 @@ signal samples_in : std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH-1 do
 type waveform_t is array(NUM_CHANNELS-1 downto 0) of unsigned(31 downto 0);
 signal int_samples : waveform_t := (others=>(others=>'0'));
 
+signal any_trig : std_logic := '0';
 signal rf_trig_0 : std_logic := '0';
 signal rf_trig_1 : std_logic := '0';
 signal pa_trig : std_logic := '0';
@@ -101,8 +102,8 @@ signal pps_counter : std_logic_vector(31 downto 0) := (others=>'0');
 signal clk_on_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 signal clk_on_last_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 
-signal run_number : std_logic_vector(15 downto 0);
-signal event_number : std_logic_vector(23 downto 0);
+signal run_number : std_logic_vector(15 downto 0) := x"0001";
+signal event_number : std_logic_vector(23 downto 0) := x"000002";
 
 
 --constant wait_clks : std_logic_vector(9 downto 0) := "0000001000";
@@ -129,13 +130,14 @@ signal read_done : std_logic := '0';
 signal read_ready : std_logic := '0';
 
 signal read_start : unsigned(31 downto 0) := (others=>'0');
-signal read_counter : unsigned(13 downto 0) := (others=> '0');
+signal read_counter : unsigned(15 downto 0) := (others=> '0');
 
 --signal wait_rd_counter : unsigned(31 downto 0) := x"00000200";
 signal wait_rd_counter : unsigned(31 downto 0) := x"00000007";
 signal test : std_logic_vector(31 downto 0) := (others=>'0');
 constant where_trigger : integer := 600;
 signal do_loop : std_logic := '1';
+constant header : string :=  "clk_counter wr_enable soft_trig pps_trig ext_trig rf_trig_0 rf_trig_1 pa_trig rf_trig_0_meta rf_trig_1_meta pa_trig_meta wr_finished read_enable read_address read_manual read_channel read_block read_done read_valid data_out clear";
 
 begin
     clock <= not clock after 2 ns;
@@ -211,8 +213,16 @@ begin
 
             file_open(file_output, "data/single_event_tb.txt", write_mode);
 
+        
+            write(v_OLINE,header, right, header'length);
+            writeline(file_output,v_OLINE);
+
             while do_loop loop
                 wait for 4 ns;
+
+                pps_counter <= x"000000ff";
+                clk_on_last_pps <= x"00000fff";
+                clk_on_last_last_pps <= x"0000ffff";
 
 --updsatteeeeeeeeeeeeeeeeee ssssssssssttttttttttttttkiiiiiiiiiiiiiiiimmmmmmmmmmmmmmmm
                 for i in 0 to NUM_CHANNELS-1 loop
@@ -233,33 +243,64 @@ begin
                 end if;
 
                 if clock_counter = where_trigger then
-                    trigger <= '1';
+                    -- pick one plus meta
+                    --pps_trig <= '1';
+                    --ext_trig <= '1';
+                    rf_trig_0 <= '1';
+                    rf_trig_0_meta <= x"00000f";
+                    --rf_trig_1 <= '1';
+                    --rf_trig_1_meta <= x"123000";
+                    --pa_trig <= '1';
+                    --pa_trig_meta <= x"89a";
+                    --soft_trig <= '1';
+                    any_trig <= '1';
+
                 else
-                    trigger <= '0';
+                    pps_trig <= '0';
+                    ext_trig <= '0';
+                    rf_trig_0 <= '0';
+                    rf_trig_0_meta <= x"000000";
+                    rf_trig_1 <= '0';
+                    rf_trig_1_meta <= x"000000";
+                    pa_trig <= '0';
+                    pa_trig_meta <= x"000";
+                    soft_trig <= '0';
+
                 end if;
 
-                if read_counter >= 512*24-1 then
+                if read_counter >= 30+512*24-1 then
                     read_enable <= '0';
-                elsif clock_counter > 1000 and wr_finished='1' then
+                elsif clock_counter > 1000 and wr_finished='1' and read_done='0' then
                     read_enable <= '1';
                 else
                     read_enable <= '0'; -- need something to off read enable and then pulse wr_clk_rd_done
                 end if;
 
-                if read_enable = '1' then
+                if read_enable = '1' and read_done = '0' then
                     read_counter <= read_counter + 1;
-                    read_block <= std_logic_vector(unsigned(read_block) + 1);
-                    if read_counter < 511 then
-                        read_channel <= "00000";
-                    elsif read_counter < 1023 then
-                        read_channel <= "00001";
-                    else
-                        read_channel <= "00010";
+
+                    if read_manual then
+                        read_block <= std_logic_vector(unsigned(read_block) + 1);
+                        if read_counter < 511 then
+                            read_channel <= "00000";
+                        elsif read_counter < 1023 then
+                            read_channel <= "00001";
+                        else
+                            read_channel <= "00010";
+                        end if;
+                    else 
+                        read_address <= std_logic_vector(read_counter);
                     end if;
                 else
                     read_block <= (others=>'0');
                     read_channel <= (others=>'0');
 
+                end if;
+
+                if read_done = '1' then
+                    clear <= '1';
+                else 
+                    clear <= '0';
                 end if;
 
                 --io files
@@ -270,7 +311,7 @@ begin
                 
                 clock_counter <= clock_counter +1;
 
-
+                
                 --write(v_OLINE,ch_samples(31 downto 0),right,32);
                 --writeline(output,v_OLINE);
 
@@ -280,7 +321,12 @@ begin
                 write(v_OLINE,wr_enable,right,1);
                 write(v_OLINE,' ');
 
-                write(v_OLINE,trigger,right,1);
+                write(v_OLINE,soft_trig,right,1);
+                write(v_OLINE,pps_trig,right,1);
+                write(v_OLINE,ext_trig,right,1);
+                write(v_OLINE,rf_trig_0,right,1);
+                write(v_OLINE,rf_trig_1,right,1);
+                write(v_OLINE,pa_trig,right,1);
                 write(v_OLINE, ' ');
 
                 write(v_OLINE,wr_finished,right,1);
@@ -289,10 +335,19 @@ begin
                 write(v_OLINE,read_enable,right,1);
                 write(v_OLINE, ' ');
 
+                write(v_OLINE,read_address,right,16);
+                write(v_OLINE, ' ');
+
+                write(v_OLINE,read_manual,right,1);
+                write(v_OLINE, ' ');
+
                 write(v_OLINE,read_channel,right,5);
                 write(v_OLINE, ' ');
 
                 write(v_OLINE,read_block,right,9);
+                write(v_OLINE, ' ');
+
+                write(v_OLINE,read_done,right,1);
                 write(v_OLINE, ' ');
 
                 write(v_OLINE,read_valid,right,1);
@@ -301,8 +356,20 @@ begin
                 write(v_OLINE,samples_out,right,32);
                 write(v_OLINE, ' ');
 
-                write(v_OLINE,test,right,32);
+                write(v_OLINE,clear, right,1);
                 write(v_OLINE, ' ');
+
+                
+                write(v_OLINE, rf_trig_0_meta, right, 24);
+                write(v_OLINE, ' ');
+                write(v_OLINE, rf_trig_1_meta, right, 24);
+                write(v_OLINE, ' ');
+                write(v_OLINE, pa_trig_meta, right, 12);
+                write(v_OLINE, ' ');
+
+
+                --write(v_OLINE,test,right,32);
+                --write(v_OLINE, ' ');
 
                 writeline(file_output,v_OLINE);
 

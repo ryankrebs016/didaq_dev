@@ -82,7 +82,7 @@ entity single_event is
         ext_trig_i : in std_logic;
 
         -- data ready signal output to higher up event handler. which should look like a big mux between event storage modules
-        data_ready_o : out std_logic; --same as data written
+        data_ready_o : out std_logic := '0'; --same as data written
 
         --read side clock and enable
         rd_clk_i : in std_logic;
@@ -130,7 +130,7 @@ architecture rtl of single_event is
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
 
         rd_data_valid_o : out std_logic; -- data valid signal
-        data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) -- output data 32 bits to match reg size, may need update with 9 bits
+        data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):= (others=>'0') -- output data 32 bits to match reg size, may need update with 9 bits
 
     );
     end component;
@@ -145,9 +145,12 @@ architecture rtl of single_event is
 
     -- total bytes for header, metadata, and waveform. might not be needed if mapping individually
     constant EVENT_HEADER_LENGTH : integer := 27;
+    constant EVENT_HEADER_BLOCKS : integer := 6;
     constant EVENT_META_LENGTH : integer := 8;
+    constant EVENT_META_BLOCKS : integer := 4;
     constant EVENT_WAVEFORM_LENGTH : integer := 12288;
-
+    constant EVENT_WAVEFORM_BLOCKS : integer := NUM_CHANNELS*2**ADDR_DEPTH;
+    constant HEAD : integer := EVENT_HEADER_BLOCKS+EVENT_META_BLOCKS;
     -- ############################################
     -- data clock side
 
@@ -159,8 +162,8 @@ architecture rtl of single_event is
     signal internal_input_data : std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH -1 downto 0);
 
     type post_trigger_waits_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(9 downto 0);
-    constant forced_waits : post_trigger_waits_t := (others=>"0000000000");
-    constant rf_waits : post_trigger_waits_t := (others=>"0100000000");
+    constant forced_waits : post_trigger_waits_t := (others=>"0000000100");
+    constant rf_waits : post_trigger_waits_t := (others=>"0000000100");
 
     signal trigger_hold: std_logic := '0';
     signal trigger_to_ram: std_logic := '0';
@@ -241,6 +244,7 @@ begin
             -- remember to assert wr_en_i after readout has happened
             -- write waveforms to buffer and wait for trigger signal to latch meta data
             if wr_en_i then
+                internal_wr_en <= '1';
                 
                 internal_input_data <= waveform_data_i;
                 -- fill trigger meta data on a trigger input
@@ -267,9 +271,9 @@ begin
 
                     for i in 0 to NUM_CHANNELS-1 loop
                         if rf_trig_0_i or rf_trig_1_i or pa_trig_i then
-                            post_trigger_wait_clks((i+1)*10 -1 downto 0) <= rf_waits(i);
+                            post_trigger_wait_clks((i+1)*10 -1 downto i*10) <= rf_waits(i);
                         else 
-                            post_trigger_wait_clks((i+1)*10 -1 downto 0) <= forced_waits(i);
+                            post_trigger_wait_clks((i+1)*10 -1 downto i*10) <= forced_waits(i);
                         end if;
                     end loop;
 
@@ -331,37 +335,116 @@ begin
                 data_valid_o <= '1';
                 delayed_read_address <= rd_address_i;
 
-                if unsigned(rd_address_i)>=10 then
+                -- two less in order to queue up the samples from ram to pull them in time
+                if unsigned(rd_address_i)>=8 then
                     ram_rd_en <= '1';
-                    channel_to_read <= std_logic_vector((unsigned(rd_address_i)-10)/512);
-                    ram_read_address <= std_logic_vector((unsigned(rd_address_i)-10) rem 512);
+                    -- THESE ARE BREAKING BUT IT SHOULD WORK TO MAP A READ COUNTER TO THE INTERNAL STUFF!!!
+                    --channel_to_read <= std_logic_vector(resize((unsigned(rd_address_i)-10) mod 512, channel_to_read'length-1)); --  "00000"; 
+                    --ram_read_address <= std_logic_vector(resize((unsigned(rd_address_i)-10) rem 512, ram_read_address'length-1)); -- "000000000"; 
+                end if;
+
+                -- mod and rem functions to map address to samples but as an if else, ugh
+                if unsigned(rd_address_i) >= HEAD and unsigned(rd_address_i) < HEAD+512 then
+                    channel_to_read <= "00000";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+1*512 and unsigned(rd_address_i) < HEAD+2*512 then
+                    channel_to_read <= "00001";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-1*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+2*512 and unsigned(rd_address_i) < HEAD+3*512 then
+                    channel_to_read <= "00010";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-2*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+3*512 and unsigned(rd_address_i) < HEAD+4*512 then
+                    channel_to_read <= "00011";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-3*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+4*512 and unsigned(rd_address_i) < HEAD+5*512 then
+                    channel_to_read <= "00100";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-4*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+5*512 and unsigned(rd_address_i) < HEAD+6*512 then
+                    channel_to_read <= "00101";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-5*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+6*512 and unsigned(rd_address_i) < HEAD+7*512 then
+                    channel_to_read <= "00110";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-6*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+7*512 and unsigned(rd_address_i) < HEAD+8*512 then
+                    channel_to_read <= "00111";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-7*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+8*512 and unsigned(rd_address_i) < HEAD+9*512 then
+                    channel_to_read <= "01000";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-8*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+9*512 and unsigned(rd_address_i) < HEAD+10*512 then
+                    channel_to_read <= "01001";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-9*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+10*512 and unsigned(rd_address_i) < HEAD+11*512 then
+                    channel_to_read <= "01010";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-10*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+11*512 and unsigned(rd_address_i) < HEAD+12*512 then
+                    channel_to_read <= "01011";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-11*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+12*512 and unsigned(rd_address_i) < HEAD+13*512 then
+                    channel_to_read <= "01100";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-12*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+13*512 and unsigned(rd_address_i) < HEAD+14*512 then
+                    channel_to_read <= "01101";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-13*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+14*512 and unsigned(rd_address_i) < HEAD+15*512 then
+                    channel_to_read <= "01110";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-14*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+15*512 and unsigned(rd_address_i) < HEAD+16*512 then
+                    channel_to_read <= "01111";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-15*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+16*512 and unsigned(rd_address_i) < HEAD+17*512 then
+                    channel_to_read <= "10000";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-16*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+17*512 and unsigned(rd_address_i) < HEAD+18*512 then
+                    channel_to_read <= "10001";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-17*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+18*512 and unsigned(rd_address_i) < HEAD+19*512 then
+                    channel_to_read <= "10010";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-18*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+19*512 and unsigned(rd_address_i) < HEAD+20*512 then
+                    channel_to_read <= "10011";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-19*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+20*512 and unsigned(rd_address_i) < HEAD+21*512 then
+                    channel_to_read <= "10100";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-20*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+21*512 and unsigned(rd_address_i) < HEAD+22*512 then
+                    channel_to_read <= "10101";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-21*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+22*512 and unsigned(rd_address_i) < HEAD+23*512 then
+                    channel_to_read <= "10110";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-22*512, ram_read_address'length));
+                elsif unsigned(rd_address_i) >= HEAD+23*512 and unsigned(rd_address_i) < HEAD+24*512 then
+                    channel_to_read <= "10111";
+                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-23*512, ram_read_address'length));
+                else
+                    channel_to_read <= "00000";
+                    ram_read_address <= "000000000";
                 end if;
 
                 -- will need to add in bit selects if not packing tightly
-                if unsigned(delayed_read_address)=0 then
+                if unsigned(rd_address_i)=0 then
                     data_o <= x"0000" & run_number;
-                elsif unsigned(delayed_read_address)=1 then
+                elsif unsigned(rd_address_i)=1 then
                     data_o <= x"00" & event_number;
-                elsif unsigned(delayed_read_address)=2 then
+                elsif unsigned(rd_address_i)=2 then
                     data_o <= event_pps_count;
 
-                elsif unsigned(delayed_read_address)=3 then
+                elsif unsigned(rd_address_i)=3 then
                     data_o <= event_clk_count;
-                elsif unsigned(delayed_read_address)=4 then
+                elsif unsigned(rd_address_i)=4 then
                     data_o <= event_clk_on_last_pps;
-                elsif unsigned(delayed_read_address)=5 then
+                elsif unsigned(rd_address_i)=5 then
                     data_o <= event_clk_on_last_last_pps;
-
-                elsif unsigned(delayed_read_address)=6 then
+                elsif unsigned(rd_address_i)=6 then
                     data_o <= x"000000" & which_trigger;
-                elsif unsigned(delayed_read_address)=7 then
+                elsif unsigned(rd_address_i)=7 then
                     data_o <= x"00" & rf_trig_0_meta;
-                elsif unsigned(delayed_read_address)=8 then
+                elsif unsigned(rd_address_i)=8 then
                     data_o <= x"00" & rf_trig_1_meta;
-                elsif unsigned(delayed_read_address)=9 then
+                elsif unsigned(rd_address_i)=9 then
                     data_o <= x"00000" & pa_trig_meta;
 
-                elsif unsigned(delayed_read_address) >= 10 then
+                elsif unsigned(rd_address_i) >= 10 then
                     if waveform_read_valid then
                         data_o <= waveform_read_data;
                     else
