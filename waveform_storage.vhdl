@@ -26,10 +26,9 @@
 --      note: it may take an extra clock cycle to access ram as written, some signals could be moved to async assign, but it still takes
 --          one clock to move rd address, enable, and channel address in, and another clock cycle for the correct data to appear
 --
---      once rd enable is deasserted no reads should happen and we can pass a wr safe signal to the state machine to know it's safe or we wait 
---          for the wr enable to be asserted
+--      once read is finished the wr clk read done signal should go high to tell the wr side to clear data and wait for new wr enable
+
 --
---      IGNORE THE READ SIDE STATE MACHINE
 
 
 -- want wr_clk_rd_done_i to be low and wr_finished_o to be low before wr_en_i can go back high. as in event control should be controlling
@@ -145,10 +144,8 @@ architecture rtl of waveform_storage is
 
     type count_post_trigger is array(NUM_CHANNELS -1 downto 0) of std_logic_vector(9 downto 0);
     signal post_trigger_wait_clks : count_post_trigger := (others=>"0100000000"); --read in from regs, maybe trig dep so need to port in
-    
 
     signal reads_done : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
-
 
     -- read clock stuff
     signal rd_ens : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
@@ -169,14 +166,13 @@ architecture rtl of waveform_storage is
     signal wr_clk_rd_done : std_logic := '0';
     signal last_wr_clk_rd_done : std_logic := '0';
 
-
     type rd_state_t is (wait_rd, rd, wr_busy);
     signal out_state : rd_state_t := wait_rd;
 
 begin
 
     assign_in : for i in 0 to NUM_CHANNELS-1 generate
-        post_trigger_wait_clks(i) <= post_trigger_wait_clks_i((i+1)*10 -1 downto i*10);
+        post_trigger_wait_clks(i) <= post_trigger_wait_clks_i((i+1)*10-1 downto i*10);
     end generate;
 
     xRamControl: for i in 0 to NUM_CHANNELS-1 generate
@@ -213,7 +209,7 @@ begin
 
     proc_write_ram : process(rst_i, wr_clk_i)
     begin
-        if rst_i = '1' or soft_reset_i = '1' then
+        if rst_i = '1' then
             for i in 0 to NUM_CHANNELS-1 loop
                 wr_ens(i) <= '0';
                 internal_input_data(i) <= NULL_DATA;
@@ -223,69 +219,99 @@ begin
             wr_finished_o <= '0';
             
         elsif rising_edge(wr_clk_i) then
-            for i in 0 to NUM_CHANNELS-1 loop
-                last_wrs_done(i)<=wrs_done(i);
-                if (wr_en_i='1') and (wrs_done(i)='0')  then
-                    wr_ens(i) <= '1';
-                    internal_input_data(i) <= data_i((i+1)*NUM_SAMPLES*SAMPLE_LENGTH-1 downto i*NUM_SAMPLES*SAMPLE_LENGTH);
-                    if ram_ens(i) then 
-                        wr_addrs(i) <= wr_addrs(i) + 1;
-                    else
-                        wr_addrs(i) <= (others=>'0');
-                    end if;
-                --triggers passed to the ram controller will intitiate the final write of the ram and raise wrs done
-                elsif (wr_en_i='1') and (wrs_done(i)='1') then
-                    wr_ens(i) <= '0';
-                    internal_input_data(i) <= data_i((i+1)*NUM_SAMPLES*SAMPLE_LENGTH-1 downto i*NUM_SAMPLES*SAMPLE_LENGTH);
-                    
-                    if wrs_done(i)='1' and last_wrs_done(i)='0' then
-                        final_wr_addrs(i) <= wr_addrs(i); --might need to add 1 if it takes a beat to stop writing
-                    end if;
-                else
-                    wr_ens(i) <= '0';
-                    internal_input_data(i) <= NULL_DATA;
-                    wr_addrs(i) <= (others=>'0');
-                end if;
-            end loop;
-
-            
-
-            if (wr_en_i='1') and (not (wrs_done=x"ffffff"))  then
+            if soft_reset_i then
+                wr_ens <= (others=>'0');
+                internal_input_data <= (others=>NULL_DATA);
+                wr_addrs <= (others=>(others=>'0'));
+                final_wr_addrs <= (others=>(others=>'0'));
                 wr_finished_o <= '0';
 
-            elsif (wr_en_i='1') and (wrs_done=x"ffffff") then
-                wr_finished_o <= '1';
-
             else
-                --rising edge of wr clk rd done to pulse. pulsing wr clk rd done should also pulse the ram controller to lower wrs done.
-                if wr_clk_rd_done_i='1' then
+                for i in 0 to NUM_CHANNELS-1 loop
+                    last_wrs_done(i)<=wrs_done(i);
+                    if (wr_en_i='1') and (wrs_done(i)='0')  then
+                        wr_ens(i) <= '1';
+                        internal_input_data(i) <= data_i((i+1)*NUM_SAMPLES*SAMPLE_LENGTH-1 downto i*NUM_SAMPLES*SAMPLE_LENGTH);
+                        if ram_ens(i) then 
+                            wr_addrs(i) <= wr_addrs(i) + 1;
+                        else
+                            wr_addrs(i) <= (others=>'0');
+                        end if;
+                    --triggers passed to the ram controller will intitiate the final write of the ram and raise wrs done
+                    elsif (wr_en_i='1') and (wrs_done(i)='1') then
+                        wr_ens(i) <= '0';
+                        internal_input_data(i) <= data_i((i+1)*NUM_SAMPLES*SAMPLE_LENGTH-1 downto i*NUM_SAMPLES*SAMPLE_LENGTH);
+
+                        if wrs_done(i)='1' and last_wrs_done(i)='0' then
+                            final_wr_addrs(i) <= wr_addrs(i); --might need to add 1 if it takes a beat to stop writing
+                        end if;
+                    else
+                        -- ram enable is low so no new data will be written. things can be reset too?
+                        wr_ens(i) <= '0';
+                        internal_input_data(i) <= NULL_DATA;
+                        wr_addrs(i) <= (others=>'0');
+                    end if;
+                end loop;
+
+                if (not (wrs_done=x"ffffff")) then -- had wr_en_i = '1' and
                     wr_finished_o <= '0';
+
+                elsif (wrs_done=x"ffffff") then
+                    wr_finished_o <= '1';
+
+                else
+                    -- pulsing wr clk rd done should also pulse the ram controller to lower wrs done.
+                    
+                    --if wr_clk_rd_done_i='1' then
+                    --    wr_finished_o <= '0';
+                    --end if;
                 end if;
             end if;
         end if;
     end process;
 
 
+
     proc_read_ram : process(rst_i, rd_clk_i)
     begin
-        
-        
-        -- async assign into the ram block which is clocked. normally outside of a process but I need some logic to translate here
-        --internal_read_block <= rd_block_i;
-        --internal_read_channel <= rd_channel_i;
-        --test(8 downto 0) <= std_logic_vector(unsigned(rd_addrs(0)));
-        for i in 0 to NUM_CHANNELS-1 loop
-            if to_integer(unsigned(rd_channel_i)) = i then
-                rd_ens(i) <= rd_en_i;
-                rd_addrs(i) <= rd_clk_wr_addrs(i) + unsigned(rd_block_i); -- can roll over but that's ok
-            else
-                rd_ens(i) <= '1';
-                rd_addrs(i) <= rd_clk_wr_addrs(i);
-            end if;
-        end loop;
 
-        rd_data_valid_o <= ram_data_valid(to_integer(unsigned(rd_channel_i)));
-        data_o <= internal_output_data(to_integer(unsigned(rd_channel_i)));
+        -- maps 24 ch data down to 1 ch data ouput. better to leave all available?
+        -- do block incrementing in higher level
+
+        -- async assign into the ram block where inputs and ram block is already clocked. can add regs for timing if needed. 
+        -- normally outside of a process but I need some logic to translate here
+
+        --test(8 downto 0) <= std_logic_vector(unsigned(rd_addrs(0)));
+        if rd_en_i then
+            rd_ens <= (others=>'1');
+            for i in 0 to NUM_CHANNELS-1 loop
+                --rd_ens(i) <= '0';
+                --rd_addrs(i) <= rd_clk_wr_addrs(i);
+
+                if to_integer(unsigned(rd_channel_i)) = i then
+                    --rd_ens(i) <= '1';
+                    rd_addrs(i) <= rd_clk_wr_addrs(i) + unsigned(rd_block_i); -- can roll over but that's ok
+                    --if i /= 23 then
+                    --    rd_ens(i+1) <= '1'; -- enable the next channel block or we just get an invalid data packet between channels
+                    --    rd_addrs(i+1) <= rd_clk_wr_addrs(i+1);
+                    --end if;
+                else
+                --    rd_ens(i) <= '0';
+                    rd_addrs(i) <= rd_clk_wr_addrs(i);
+                end if;
+            end loop;
+            rd_data_valid_o <= ram_data_valid(to_integer(unsigned(rd_channel_i)));
+            data_o <= internal_output_data(to_integer(unsigned(rd_channel_i)));
+        else
+            rd_ens <= (others=>'0');
+            rd_data_valid_o <= '0';
+            data_o <= (others=>'1');
+            for i in 0 to NUM_CHANNELS-1 loop
+                rd_addrs(i) <= rd_clk_wr_addrs(i);
+            end loop;
+        end if;
+
+
         
         /*
          --clocked output data is not the way since it incurs a clock cycle of delay to move through modules
@@ -302,7 +328,6 @@ begin
         elsif rising_edge(rd_clk_i) then
             
             -- some of these should be unclocked if I'm just passing already clocked signals
-            -- I REALLY NEED TO UNCLOCK THESE TO NOT INCUR CLOCK CYCLE OF LATENCY MOVING UP MODULES!!!
             internal_read_block <= rd_block_i;
             if rd_en_i='1' and unsigned(rd_channel_i)>=0 and unsigned(rd_channel_i)<=23 then
                 internal_read_channel <= rd_channel_i;
@@ -325,10 +350,9 @@ begin
         end if;
         */
 
-
     end process;
 
-    -- cdc signal sync for where the first block of reads happen. rd addr should be help long enough that a simple ff sync is ok
+    -- cdc signal sync for where the first block of reads happen. rd addr should be held long enough before readout that a simple ff sync from fast to slow is ok
     SYNC_WR_ADDR : for ch in 0 to NUM_CHANNELS-1 generate
         SYNC_WR_ADDR_BITS : for i in 0 to ADDR_DEPTH-1 generate
             ADDR_SYNC : signal_sync
@@ -340,15 +364,6 @@ begin
             );
         end generate;
     end generate;
-
-    -- can be removed if parent module controls enable signals correctly
-    --SYNC_RD_DONE: signal_sync
-    --    port map(
-    --        clkA	=> rd_clk_i,
-    --        clkB	=> wr_clk_i,
-    --        SignalIn_clkA	=> rd_done_i,
-    --        SignalOut_clkB	=> wr_clk_rd_done
-    --    );
 
 end rtl;
 

@@ -35,7 +35,7 @@ entity single_event is
         SAMPLE_LENGTH : integer := 8; -- or 9
         NUM_SAMPLES : integer := 4;
         ADDR_DEPTH : integer := 9;
-        OUTPUT_LENGTH : integer := 32 -- tbd map 24 ch out to 4 byte reg interface or port 24 ch to 24 regs? fit to reg size
+        OUTPUT_LENGTH : integer := 32 -- tbd map 24 ch out to 4 byte reg interface or port 24 ch to 24 regs? fit to reg size or packet size. TODO: update for 9 bits
     );
     port(
         rst_i : in std_logic;
@@ -82,19 +82,20 @@ entity single_event is
         ext_trig_i : in std_logic;
 
         -- data ready signal output to higher up event handler. which should look like a big mux between event storage modules
+        wr_busy_o : out std_logic := '0';
         data_ready_o : out std_logic := '0'; --same as data written
 
         --read side clock and enable
         rd_clk_i : in std_logic;
-        rd_en_i : in std_logic;
-        rd_address_i : in std_logic_vector(15 downto 0);
+        rd_en_i : in std_logic; -- refresh new data if not rd manual
 
         rd_manual_i : in std_logic;
         rd_channel_i : in std_logic_vector(4 downto 0);
         rd_block_i : in std_logic_vector(8 downto 0);
 
         -- register sized data out
-        read_done_o : std_logic;
+        read_address_o : out std_logic_vector(15 downto 0);
+        read_done_o : out std_logic;
         data_valid_o : out std_logic;
         data_o : out std_logic_vector(31 downto 0);
         data_ready_rd_clk_o : out std_logic -- cdc using data ready o?
@@ -121,6 +122,7 @@ architecture rtl of single_event is
         data_i      : in std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0); -- input data 24channels*4samples*8/9bits
         post_trigger_wait_clks_i : in std_logic_vector(NUM_CHANNELS*10-1 downto 0); -- configurable, trigger dependent, post trigger hold off
         wr_clk_rd_done_i : in std_logic;
+        --wr_busy_o : out std_logic;
         wr_finished_o   : out std_logic; --write finished signal from dma or read control higher up
 
         --read clocked stuff
@@ -128,6 +130,7 @@ architecture rtl of single_event is
         rd_en_i         : in std_logic; -- rd enable to know when to pass samples out
         rd_channel_i    : in std_logic_vector(4 downto 0); -- same time as rd_en_i
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
+
 
         rd_data_valid_o : out std_logic; -- data valid signal
         data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):= (others=>'0') -- output data 32 bits to match reg size, may need update with 9 bits
@@ -162,8 +165,8 @@ architecture rtl of single_event is
     signal internal_input_data : std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH -1 downto 0);
 
     type post_trigger_waits_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(9 downto 0);
-    constant forced_waits : post_trigger_waits_t := (others=>"0000000100");
-    constant rf_waits : post_trigger_waits_t := (others=>"0000000100");
+    constant forced_waits : post_trigger_waits_t := (others=>"0000000000"); -- port outside to regs?
+    constant rf_waits : post_trigger_waits_t := (others=>"0000000000");
 
     signal trigger_hold: std_logic := '0';
     signal trigger_to_ram: std_logic := '0';
@@ -188,12 +191,16 @@ architecture rtl of single_event is
 
     -- #####################################
     -- read side stuff
+    signal read_counter : unsigned(15 downto 0) := (others=> '0');
+    signal read_side_buffers_filled : std_logic_vector(1 downto 0) := (others=>'0');
     signal delayed_read_address : std_logic_vector(15 downto 0) := (others=>'0');
     signal ram_rd_en : std_logic := '0';
     signal ram_read_address : std_logic_vector(8 downto 0) := (others=>'0'); --hardcode 512 depth of 32 bit words for now
+    signal waveform_read_counter : unsigned(8 downto 0) := (others=>'0');
     signal channel_to_read : std_logic_vector(4 downto 0) := (others=>'0');
     signal waveform_read_valid : std_logic := '0';
     signal waveform_read_data : std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
+    signal rd_clk_data_ready : std_logic := '0';
 
 begin
     waveform_ram : waveform_storage
@@ -204,10 +211,11 @@ begin
         wr_clk_i => wr_clk_i, --figure out logic
         wr_en_i => internal_wr_en, -- figure out logic
         trigger_i => trigger_to_ram, -- figure out logic, inside single pulse will push the state machine
-        soft_reset_i => soft_reset_i,
+        soft_reset_i => soft_reset_i or clear_i,
         data_i => internal_input_data,
         post_trigger_wait_clks_i => post_trigger_wait_clks,
         wr_clk_rd_done_i =>  wr_clk_rd_done,
+
         wr_finished_o => buffers_filled, -- figure out logic
 
         --read clocked stuff
@@ -224,7 +232,7 @@ begin
     -- REFACTOR
     proc_fill_event_on_trig : process(rst_i, wr_clk_i)
     begin
-        if rst_i = '1' or soft_reset_i = '1' then
+        if rst_i = '1' then
             --resets
             internal_wr_en <= '0';
             trigger_hold <= '0';
@@ -241,10 +249,27 @@ begin
 
         elsif rising_edge(wr_clk_i) then
 
+            --clear manually rather than clearing when wr_enable goes low eg wr_en high wait for wr finished, do readout, then pulse clear_i to reset data
+
+            if clear_i or soft_reset_i then
+                internal_wr_en <= '0';
+                trigger_hold <= '0';
+                trigger_to_ram <= '0';
+                any_trig <='0';
+                data_ready_o <= '0'; -- super needs to record which event is filled and know when it has been read out
+                event_pps_count <= (others=>'0');
+                event_clk_count <= (others=>'0');
+                event_clk_on_last_pps <= (others=>'0');
+                event_clk_on_last_last_pps <= (others=>'0');
+                run_number <= (others=>'0');
+                event_number <= (others=>'0');
+                internal_input_data <= (others=>'0');
+
             -- remember to assert wr_en_i after readout has happened
             -- write waveforms to buffer and wait for trigger signal to latch meta data
-            if wr_en_i then
-                internal_wr_en <= '1';
+            elsif wr_en_i then
+
+                --internal_wr_en <= '1';
                 
                 internal_input_data <= waveform_data_i;
                 -- fill trigger meta data on a trigger input
@@ -268,7 +293,7 @@ begin
                 if (rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig_i or ext_trig_i or pps_trig_i) and (not trigger_hold) then
                     which_trigger <= "00" & pa_trig_i & rf_trig_1_i & rf_trig_0_i & pps_trig_i & ext_trig_i & soft_trig_i;
                     trigger_hold <= '1'; -- trigger hold once we get a trigger and is only dropped is wr_en_i is low, ie has filled event and upper module de asserts
-
+                    wr_busy_o <= '0'; --same as trigger hold
                     for i in 0 to NUM_CHANNELS-1 loop
                         if rf_trig_0_i or rf_trig_1_i or pa_trig_i then
                             post_trigger_wait_clks((i+1)*10 -1 downto i*10) <= rf_waits(i);
@@ -290,184 +315,154 @@ begin
                     event_number <= event_number_i;
 
                 else
-                    --internal_wr_en <= '1'; -- NOT SURE ABOUT RIGHT keep high until we get a trigger or hold off until the 
                     trigger_to_ram <= '0';
                 end if;
 
                 if buffers_filled then
                     internal_wr_en <= '0';
                     data_ready_o <= '1';
+                    wr_busy_o <= '0';
+                else
+                    internal_wr_en <= '1';
+                    data_ready_o <= '0';
+                    wr_busy_o <= '1';
                 end if;
-
-
-            --clear manually rather than clearing when wr_enable goes low eg wr_en high wait for wr finished, do readout, then pulse clear_i to reset data
-            elsif clear_i then
-                internal_wr_en <= '0';
-                trigger_hold <= '0';
-                trigger_to_ram <= '0';
-                any_trig <='0';
-                data_ready_o <= '0'; -- super needs to record which event is filled and know when it has been read out
-                event_pps_count <= (others=>'0');
-                event_clk_count <= (others=>'0');
-                event_clk_on_last_pps <= (others=>'0');
-                event_clk_on_last_last_pps <= (others=>'0');
-                run_number <= (others=>'0');
-                event_number <= (others=>'0');
-                internal_input_data <= (others=>'0');
 
             end if;
 
         end if;
     end process;
+
+    --read_address_o <= std_logic_vector(read_counter);
+
 
     -- REFACTOR!!!!
     proc_map_sbc_read_addr : process(rst_i, rd_clk_i)
     begin
+    read_address_o <= channel_to_read & "00" & ram_read_address;
+
         if rst_i = '1' then
             data_o <= (others=>'0');
             data_valid_o <= '0';
+            read_done_o <= '0';
+            read_counter <= (others=>'0');
+            rd_clk_data_ready <= '0';
+            channel_to_read <= (others=>'0');
+            ram_read_address <= (others=>'0');
 
+    
         elsif rising_edge(rd_clk_i) then
-            -- maybe some things can be unclocked like the read and ram addresses?
-            -- rd en i should go high after the event is fully written, and then it can load the first sample from ram and wait?
-            -- standard event readout to pump out header, trigger info, and waveforms using a mapped block read
-            if rd_en_i and not rd_manual_i then
+            read_side_buffers_filled(0) <= buffers_filled;
+            read_side_buffers_filled(1) <= read_side_buffers_filled(0);
+
+            -- cdc not working from wr side buffers_filled. held long enough, maybe just ignore?
+            if read_side_buffers_filled(1) = '0' then-- and rd_en_i='0' then
+                -- reset some signals?
+                ram_rd_en <= '0';
+                data_o <= (others=>'1');
+                data_valid_o <= '0';
+                read_counter <= (others=>'0');
+                read_done_o <= '0';
+                channel_to_read <= (others=>'0');
+                ram_read_address <= (others=>'0');
+
+                
+            elsif read_side_buffers_filled(1) = '1' then
+                -- assign data out so rd enable pulses new data to the output
+                -- need to do a look ahead so if writing is done the first block is already there
+                -- then each read updates the read address
+
+                -- once event complete queue up waveform buffers by enabling
                 data_valid_o <= '1';
-                delayed_read_address <= rd_address_i;
 
-                -- two less in order to queue up the samples from ram to pull them in time
-                if unsigned(rd_address_i)>=8 then
-                    ram_rd_en <= '1';
-                    -- THESE ARE BREAKING BUT IT SHOULD WORK TO MAP A READ COUNTER TO THE INTERNAL STUFF!!!
-                    --channel_to_read <= std_logic_vector(resize((unsigned(rd_address_i)-10) mod 512, channel_to_read'length-1)); --  "00000"; 
-                    --ram_read_address <= std_logic_vector(resize((unsigned(rd_address_i)-10) rem 512, ram_read_address'length-1)); -- "000000000"; 
-                end if;
-
-                -- mod and rem functions to map address to samples but as an if else, ugh
-                if unsigned(rd_address_i) >= HEAD and unsigned(rd_address_i) < HEAD+512 then
-                    channel_to_read <= "00000";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+1*512 and unsigned(rd_address_i) < HEAD+2*512 then
-                    channel_to_read <= "00001";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-1*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+2*512 and unsigned(rd_address_i) < HEAD+3*512 then
-                    channel_to_read <= "00010";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-2*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+3*512 and unsigned(rd_address_i) < HEAD+4*512 then
-                    channel_to_read <= "00011";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-3*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+4*512 and unsigned(rd_address_i) < HEAD+5*512 then
-                    channel_to_read <= "00100";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-4*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+5*512 and unsigned(rd_address_i) < HEAD+6*512 then
-                    channel_to_read <= "00101";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-5*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+6*512 and unsigned(rd_address_i) < HEAD+7*512 then
-                    channel_to_read <= "00110";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-6*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+7*512 and unsigned(rd_address_i) < HEAD+8*512 then
-                    channel_to_read <= "00111";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-7*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+8*512 and unsigned(rd_address_i) < HEAD+9*512 then
-                    channel_to_read <= "01000";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-8*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+9*512 and unsigned(rd_address_i) < HEAD+10*512 then
-                    channel_to_read <= "01001";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-9*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+10*512 and unsigned(rd_address_i) < HEAD+11*512 then
-                    channel_to_read <= "01010";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-10*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+11*512 and unsigned(rd_address_i) < HEAD+12*512 then
-                    channel_to_read <= "01011";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-11*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+12*512 and unsigned(rd_address_i) < HEAD+13*512 then
-                    channel_to_read <= "01100";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-12*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+13*512 and unsigned(rd_address_i) < HEAD+14*512 then
-                    channel_to_read <= "01101";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-13*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+14*512 and unsigned(rd_address_i) < HEAD+15*512 then
-                    channel_to_read <= "01110";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-14*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+15*512 and unsigned(rd_address_i) < HEAD+16*512 then
-                    channel_to_read <= "01111";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-15*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+16*512 and unsigned(rd_address_i) < HEAD+17*512 then
-                    channel_to_read <= "10000";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-16*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+17*512 and unsigned(rd_address_i) < HEAD+18*512 then
-                    channel_to_read <= "10001";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-17*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+18*512 and unsigned(rd_address_i) < HEAD+19*512 then
-                    channel_to_read <= "10010";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-18*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+19*512 and unsigned(rd_address_i) < HEAD+20*512 then
-                    channel_to_read <= "10011";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-19*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+20*512 and unsigned(rd_address_i) < HEAD+21*512 then
-                    channel_to_read <= "10100";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-20*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+21*512 and unsigned(rd_address_i) < HEAD+22*512 then
-                    channel_to_read <= "10101";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-21*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+22*512 and unsigned(rd_address_i) < HEAD+23*512 then
-                    channel_to_read <= "10110";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-22*512, ram_read_address'length));
-                elsif unsigned(rd_address_i) >= HEAD+23*512 and unsigned(rd_address_i) < HEAD+24*512 then
-                    channel_to_read <= "10111";
-                    ram_read_address <= std_logic_vector(resize(unsigned(rd_address_i)-HEAD-23*512, ram_read_address'length));
+                if rd_en_i and not rd_manual_i then
+                    -- update a read address
+                    read_counter <= read_counter + 1;
                 else
-                    channel_to_read <= "00000";
-                    ram_read_address <= "000000000";
+                    -- dont
                 end if;
 
-                -- will need to add in bit selects if not packing tightly
-                if unsigned(rd_address_i)=0 then
-                    data_o <= x"0000" & run_number;
-                elsif unsigned(rd_address_i)=1 then
-                    data_o <= x"00" & event_number;
-                elsif unsigned(rd_address_i)=2 then
-                    data_o <= event_pps_count;
+                if rd_manual_i then
+                    channel_to_read <= rd_channel_i;
+                    ram_read_address <= rd_block_i;
+                    data_o <= waveform_read_data;
 
-                elsif unsigned(rd_address_i)=3 then
-                    data_o <= event_clk_count;
-                elsif unsigned(rd_address_i)=4 then
-                    data_o <= event_clk_on_last_pps;
-                elsif unsigned(rd_address_i)=5 then
-                    data_o <= event_clk_on_last_last_pps;
-                elsif unsigned(rd_address_i)=6 then
-                    data_o <= x"000000" & which_trigger;
-                elsif unsigned(rd_address_i)=7 then
-                    data_o <= x"00" & rf_trig_0_meta;
-                elsif unsigned(rd_address_i)=8 then
-                    data_o <= x"00" & rf_trig_1_meta;
-                elsif unsigned(rd_address_i)=9 then
-                    data_o <= x"00000" & pa_trig_meta;
+                else
 
-                elsif unsigned(rd_address_i) >= 10 then
-                    if waveform_read_valid then
-                        data_o <= waveform_read_data;
+                    -- map event data out
+                    if unsigned(read_counter)=0 then
+                        data_o <= x"0000" & run_number;
+                    elsif unsigned(read_counter)=1 then
+                        data_o <= x"00" & event_number;
+                    elsif unsigned(read_counter)=2 then
+                        data_o <= event_pps_count;
+                    elsif unsigned(read_counter)=3 then
+                        data_o <= event_clk_count;
+                    elsif unsigned(read_counter)=4 then
+                        data_o <= event_clk_on_last_pps;
+                    elsif unsigned(read_counter)=5 then
+                        data_o <= event_clk_on_last_last_pps;
+                    elsif unsigned(read_counter)=6 then
+                        data_o <= x"000000" & which_trigger;
+                    elsif unsigned(read_counter)=7 then
+                        data_o <= x"00" & rf_trig_0_meta;
+                    elsif unsigned(read_counter)=8 then
+                        data_o <= x"00" & rf_trig_1_meta;
+                        ram_rd_en <= '1';
+                        ram_read_address <= (others=>'0');
+                        channel_to_read <= (others=>'0');
+                    elsif unsigned(read_counter)=9 then
+                        data_o <= x"00000" & pa_trig_meta;
+                        ram_rd_en <= '1';
+                        ram_read_address <= (others=>'0');
+                        channel_to_read <= (others=>'0');
+                        --ram_read_address <= std_logic_vector(unsigned(ram_read_address) + 1);
+
+                    elsif unsigned(read_counter) >= HEAD and unsigned(read_counter) < HEAD+EVENT_WAVEFORM_BLOCKS then
+                        ram_rd_en <= '1';
+
+                        --waveform_read_counter <= waveform_read_counter + 1;
+                        ram_read_address <= std_logic_vector(unsigned(ram_read_address) + 1);
+                        if waveform_read_valid then
+                            data_o <= waveform_read_data;
+                        else
+                            data_o <= x"ffffffff";
+                        end if;
                     else
-                        data_o <= x"ffffffff";
+                        data_o <= (others=>'1');
+                        data_valid_o <= '0';
+                    end if;
+
+                    if unsigned(ram_read_address) = 511 then
+                        if unsigned(channel_to_read) + 1 > 23 then
+                            channel_to_read <= "00000";
+                        else
+                            channel_to_read <= std_logic_vector(unsigned(channel_to_read) + 1);
+                        end if;
+                    end if;
+
+                    if unsigned(read_counter) >= HEAD+EVENT_WAVEFORM_BLOCKS-1 then
+                        read_done_o <= '1';
+                        ram_rd_en <= '0';
+                    else
+                        read_done_o <= '0';
                     end if;
                 end if;
 
-            elsif rd_manual_i then
-                -- instead read channel and block waveforms maually using rd_manual_i, rd_channel_i, and rd_block_i for sample calibration?
-                ram_rd_en <= '1';
-                data_valid_o <= waveform_read_valid;
-                channel_to_read <= std_logic_vector(rd_channel_i);
-                ram_read_address <= std_logic_vector(rd_block_i);
-                data_o <= waveform_read_data;
-
             else
-                data_o <= (others=> '0');
-                data_valid_o <= '0';
-                channel_to_read <= (others=>'0');
-                ram_read_address <= (others=>'0');
+
             end if;
 
         end if;
     end process;
+
+    --ADDR_SYNC : signal_sync
+    --port map(
+    --    clkA	=> wr_clk_i,
+    --    clkB	=> rd_clk_i,
+    --    SignalIn_clkA	=> buffers_filled,
+    --    SignalOut_clkB	=> rd_clk_data_ready 
+    --);
+
 end rtl;
 

@@ -25,7 +25,7 @@ component ram_control is
         wr_clk_i    : in std_logic; -- write data clock
         wr_en_i     : in std_logic; --write enable, de assert when wr_finished_o goes high
         trigger_i   : in std_logic; -- trigger pulse for post trigger sample holdoff
-        post_trigger_wait_clks_i : in std_logic_vector(10-1 downto 0); -- configurable, trigger dependent, post trigger hold off
+        post_trigger_wait_clks_i : in std_logic_vector(9 downto 0); -- configurable, trigger dependent, post trigger hold off
         soft_reset_i : in std_logic;
 
         wr_clk_rd_done_i : in std_logic; -- signal to reset the state machine
@@ -44,7 +44,7 @@ signal soft_reset : std_logic := '0';
 type thresholds_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(7 downto 0);
 signal enable: std_logic := '0';
 signal trigger : std_logic := '0';
-signal post_trigger_wait_clks : std_logic_vector(9 downto 0) := (others=>'0');
+signal post_trigger_wait_clks : std_logic_vector(9 downto 0) := "0010000000"; --(others=>'0');
 signal wr_clk_rd_done : std_logic := '0';
 signal ram_enable : std_logic := '0';
 signal wr_finished : std_logic := '0';
@@ -54,6 +54,9 @@ signal wait_rd_counter : unsigned(31 downto 0) := x"00000001";
 
 constant where_trigger : integer := 600;
 signal do_loop : std_logic := '1';
+
+constant header : string :=  "clk_counter enable_i trigger_i ram_enable wr_finished_o wr_clk_rd_done_i";
+
 
 begin
 
@@ -90,8 +93,11 @@ begin
         begin
 
             file_open(file_output, "data/ram_tb.txt", write_mode);
-
+            write(v_OLINE,header, right, header'length);
+            writeline(file_output,v_OLINE);
             while do_loop loop
+                wait for 4 ns; --about 1/118e6 ns, one full clock cycle
+
 
                 clock_counter <= clock_counter +1;
 
@@ -121,7 +127,6 @@ begin
                 --file_open(file_TRIGGERS, "data/output_trigger.txt", write_mode);
 
                 
-                wait for 4 ns; --about 1/118e6 ns, one full clock cycle
 
                 --write(v_OLINE,ch_samples(31 downto 0),right,32);
                 --writeline(output,v_OLINE);
@@ -138,11 +143,13 @@ begin
                 write(v_OLINE,ram_enable,right,1);
                 write(v_OLINE, ' ');
 
+                write(v_OLINE,wr_finished,right,1);
+                write(v_OLINE, ' ');
+
                 write(v_OLINE,wr_clk_rd_done,right,1);
                 write(v_OLINE, ' ');
 
-                write(v_OLINE,wr_finished,right,1);
-                write(v_OLINE, ' ');
+
 
 
 

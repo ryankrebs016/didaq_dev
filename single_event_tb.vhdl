@@ -49,19 +49,20 @@ component single_event is
         ext_trig_i : in std_logic;
 
         -- data ready signal output to higher up event handler. which should look like a big mux between event storage modules
+        wr_busy_o : out std_logic;
         data_ready_o : out std_logic; --same as data written
 
         --read side clock and enable
         rd_clk_i : in std_logic;
         rd_en_i : in std_logic;
-        rd_address_i : in std_logic_vector(15 downto 0);
 
         rd_manual_i : in std_logic;
         rd_channel_i : in std_logic_vector(4 downto 0);
         rd_block_i : in std_logic_vector(8 downto 0);
 
         -- register sized data out
-        read_done_o : std_logic;
+        read_address_o : out std_logic_vector(15 downto 0);
+        read_done_o : out std_logic;
         data_valid_o : out std_logic;
         data_o : out std_logic_vector(31 downto 0);
         data_ready_rd_clk_o : out std_logic -- cdc using data ready o?
@@ -107,7 +108,7 @@ signal event_number : std_logic_vector(23 downto 0) := x"000002";
 
 
 --constant wait_clks : std_logic_vector(9 downto 0) := "0000001000";
-constant wait_clks : std_logic_vector(9 downto 0) := "0000000001";
+constant wait_clks : std_logic_vector(9 downto 0) := "0000000100";
 
 type post_trig_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(9 downto 0);
 signal post_trigger_wait_clks : post_trig_t := (others=>wait_clks);
@@ -116,6 +117,7 @@ signal send_post_trigger_wait_clks : std_logic_vector(NUM_CHANNELS*10-1 downto 0
 signal wr_clk_rd_done : std_logic := '0';
 signal ram_enable : std_logic := '0';
 signal wr_finished : std_logic := '0';
+signal wr_busy : std_logic := '0';
 
 signal slow_clock : std_logic := '1';
 signal read_enable : std_logic := '0';
@@ -131,13 +133,13 @@ signal read_ready : std_logic := '0';
 
 signal read_start : unsigned(31 downto 0) := (others=>'0');
 signal read_counter : unsigned(15 downto 0) := (others=> '0');
-
+signal current_read_address : std_logic_vector(15 downto 0) := (others=>'0');
 --signal wait_rd_counter : unsigned(31 downto 0) := x"00000200";
 signal wait_rd_counter : unsigned(31 downto 0) := x"00000007";
 signal test : std_logic_vector(31 downto 0) := (others=>'0');
 constant where_trigger : integer := 600;
 signal do_loop : std_logic := '1';
-constant header : string :=  "clk_counter wr_enable soft_trig pps_trig ext_trig rf_trig_0 rf_trig_1 pa_trig rf_trig_0_meta rf_trig_1_meta pa_trig_meta wr_finished read_enable read_address read_manual read_channel read_block read_done read_valid data_out clear";
+constant header : string :=  "clk_counter wr_enable trigs wr_finished read_enable read_address read_manual read_channel read_block read_done read_valid data_out clear rf_trig_0_meta rf_trig_1_meta pa_trig_meta";
 
 begin
     clock <= not clock after 2 ns;
@@ -174,16 +176,17 @@ begin
         soft_trig_i => soft_trig,
         ext_trig_i => ext_trig,
 
+        wr_busy_o => wr_busy,
         data_ready_o => wr_finished,
 
         rd_clk_i => clock,
         rd_en_i => read_enable,
-        rd_address_i => read_address,
         
         rd_manual_i => read_manual,
         rd_channel_i => read_channel,
         rd_block_i => read_block,
 
+        read_address_o => current_read_address,
         read_done_o => read_done,
         data_valid_o => read_valid,
         data_o => samples_out,
@@ -224,13 +227,18 @@ begin
                 clk_on_last_pps <= x"00000fff";
                 clk_on_last_last_pps <= x"0000ffff";
 
---updsatteeeeeeeeeeeeeeeeee ssssssssssttttttttttttttkiiiiiiiiiiiiiiiimmmmmmmmmmmmmmmm
+                clock_counter <= clock_counter +1;
+
                 for i in 0 to NUM_CHANNELS-1 loop
-                    if i =0 then
-                        int_samples(i)<=clock_counter;
-                    elsif i =1 then
-                        int_samples(i) <= clock_counter + 256*4;
-                    end if;
+                    int_samples(i) <= clock_counter + i*256*4;
+
+                    --if i =0 then
+                    --    int_samples(i)<=clock_counter;
+                    --elsif i =1 then
+                    --    ;
+                    --else 
+                    --    int_samples(i) <= to_unsigned(i,32);
+                    --end if;
                 end loop;
 
                 if clock_counter >20 then
@@ -254,7 +262,6 @@ begin
                     --pa_trig_meta <= x"89a";
                     --soft_trig <= '1';
                     any_trig <= '1';
-
                 else
                     pps_trig <= '0';
                     ext_trig <= '0';
@@ -268,18 +275,19 @@ begin
 
                 end if;
 
-                if read_counter >= 30+512*24-1 then
-                    read_enable <= '0';
-                elsif clock_counter > 1000 and wr_finished='1' and read_done='0' then
+
+                if clock_counter > 1000 and wr_finished='1'  and read_done='0' then
                     read_enable <= '1';
                 else
                     read_enable <= '0'; -- need something to off read enable and then pulse wr_clk_rd_done
                 end if;
 
-                if read_enable = '1' and read_done = '0' then
+                if read_enable='1'  and read_done = '0' then
+                    
                     read_counter <= read_counter + 1;
 
                     if read_manual then
+                        -- these would be pulled in from regs from sbc, for now just mimic those
                         read_block <= std_logic_vector(unsigned(read_block) + 1);
                         if read_counter < 511 then
                             read_channel <= "00000";
@@ -288,8 +296,7 @@ begin
                         else
                             read_channel <= "00010";
                         end if;
-                    else 
-                        read_address <= std_logic_vector(read_counter);
+
                     end if;
                 else
                     read_block <= (others=>'0');
@@ -309,7 +316,6 @@ begin
                 --file_open(file_TRIGGERS, "data/output_trigger.txt", write_mode);
 
                 
-                clock_counter <= clock_counter +1;
 
                 
                 --write(v_OLINE,ch_samples(31 downto 0),right,32);
@@ -335,7 +341,7 @@ begin
                 write(v_OLINE,read_enable,right,1);
                 write(v_OLINE, ' ');
 
-                write(v_OLINE,read_address,right,16);
+                write(v_OLINE,current_read_address,right,16);
                 write(v_OLINE, ' ');
 
                 write(v_OLINE,read_manual,right,1);

@@ -61,7 +61,7 @@ type waveform_t is array(NUM_CHANNELS-1 downto 0) of unsigned(31 downto 0);
 signal int_samples : waveform_t := (others=>(others=>'0'));
 
 --constant wait_clks : std_logic_vector(9 downto 0) := "0000001000";
-constant wait_clks : std_logic_vector(9 downto 0) := "0000000001";
+constant wait_clks : std_logic_vector(9 downto 0) := "0000000000";
 
 type post_trig_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(9 downto 0);
 signal post_trigger_wait_clks : post_trig_t := (others=>wait_clks);
@@ -86,6 +86,8 @@ signal wait_rd_counter : unsigned(31 downto 0) := x"00000007";
 signal test : std_logic_vector(31 downto 0) := (others=>'0');
 constant where_trigger : integer := 600;
 signal do_loop : std_logic := '1';
+
+constant header : string := "clk wr_enable trigger wr_finished read_enable read_channel read_block read_valid samples";
 
 begin
     clock <= not clock after 2 ns;
@@ -138,16 +140,19 @@ begin
 
             file_open(file_output, "data/waveform_tb.txt", write_mode);
 
+            write(v_OLINE,header, right, header'length);
+            writeline(file_output,v_OLINE);
             while do_loop loop
                 wait for 4 ns;
 
 
                 for i in 0 to NUM_CHANNELS-1 loop
-                    if i =0 then
-                        int_samples(i)<=clock_counter;
-                    elsif i =1 then
-                        int_samples(i) <= clock_counter + 256*4;
-                    end if;
+                    int_samples(i) <= clock_counter + i*256*4;
+                    --if i =0 then
+                    --    int_samples(i)<=clock_counter;
+                    --elsif i =1 then
+                    --    int_samples(i) <= clock_counter + 256*4;
+                    --end if;
                 end loop;
 
                 if clock_counter >20 then
@@ -167,25 +172,49 @@ begin
 
                 if read_counter >= 512*24-1 then
                     read_enable <= '0';
+                elsif clock_counter > 4000 then
+                    read_enable <= '0';
+                    soft_reset <= '1';
                 elsif clock_counter > 1000 and wr_finished='1' then
                     read_enable <= '1';
                 else
                     read_enable <= '0'; -- need something to off read enable and then pulse wr_clk_rd_done
                 end if;
 
-                if read_enable = '1' then
+                -- in single event I just need to queue up the first samples of channel 0 early and then the rest should be ok
+                if wr_finished and not read_enable then
+                    read_channel <= "00000";
+                    read_block <= (others=>'0');
+                elsif read_enable = '1' then
                     read_counter <= read_counter + 1;
                     read_block <= std_logic_vector(unsigned(read_block) + 1);
-                    if read_counter < 511 then
-                        read_channel <= "00000";
-                    elsif read_counter < 1023 then
-                        read_channel <= "00001";
-                    else
-                        read_channel <= "00010";
+                    if unsigned(read_block) = 511 then
+                        read_channel <= std_logic_vector(unsigned(read_channel)+1);
                     end if;
+                    
+                    --if to_unsigned(to_integer(read_counter) / 512, read_channel'length) < 24 then
+                    --    read_channel <= std_logic_vector(to_unsigned(to_integer(read_counter) / 512, read_channel'length));
+                    --end if;
+                        --if read_counter mod 512 = 0 then
+                    --if (to_integer(read_counter) mod 512 )= 511 then
+                    --    read_channel <= std_logic_vector(1+to_unsigned(to_integer(read_counter) / 512, read_channel'length));
+                    --elsif to_unsigned(to_integer(read_counter) / 512, read_channel'length) < 24 then
+                    --    read_channel <= std_logic_vector(to_unsigned(to_integer(read_counter) / 512, read_channel'length));
+                    --else
+                    --    read_channel <= "00100";
+                    --end if;
+
+                    --end if;
+                    --if read_counter <= 511 then
+                    --    read_channel <= "00000";
+                    --elsif read_counter <= 1023 then
+                    --    read_channel <= "00001";
+                    --else
+                    --    read_channel <= "00010";
+                    --end if;
                 else
-                    read_block <= (others=>'0');
-                    read_channel <= (others=>'0');
+                    --read_block <= (others=>'0');
+                    --read_channel <= (others=>'0');
 
                 end if;
 
@@ -226,9 +255,6 @@ begin
                 write(v_OLINE, ' ');
 
                 write(v_OLINE,samples_out,right,32);
-                write(v_OLINE, ' ');
-
-                write(v_OLINE,test,right,32);
                 write(v_OLINE, ' ');
 
                 writeline(file_output,v_OLINE);

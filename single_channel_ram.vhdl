@@ -1,4 +1,4 @@
--- simple dual port ram to store a single channels data
+-- simple dual port ram to store a single channel's data
 -- exclusive write in, read out --- single clock write, single clock read
 --
 -- a single M20k should be able to fit a single channel's buffer
@@ -46,6 +46,7 @@ architecture rtl of single_channel_ram is
     type mem is array(2**ADDR_DEPTH-1 downto 0) of std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0);
     signal mem_blk : mem := (others=>(others=>'0'));
 
+-- this is basically a behavioral template for simple dual port ram. verify this synthesizes as BRAM
 begin
     a_side : process(A_clk_i) begin
         if rising_edge(A_clk_i) then
