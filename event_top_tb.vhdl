@@ -73,7 +73,9 @@ component event_top is
         wr_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
 
         rd_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
-        rd_lock_o : out std_logic
+        rd_lock_o : out std_logic;
+        rd_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0)
+
 
     );
 end component;
@@ -142,12 +144,16 @@ signal current_read_address : std_logic_vector(15 downto 0) := (others=>'0');
 signal wait_rd_counter : unsigned(31 downto 0) := x"00000007";
 signal test : std_logic_vector(31 downto 0) := (others=>'0');
 constant where_trigger : integer := 600;
+constant where_trigger_2 : integer := 13350;
+
 signal do_loop : std_logic := '1';
 constant header : string :=  "clk_counter wr_enable";
 
 signal wr_pointer : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal wr_busy : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal wr_done : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
+signal rd_done : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
+
 signal rd_pointer : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal rd_lock : std_logic := '0';
 begin
@@ -196,7 +202,8 @@ begin
         wr_done_o => wr_done,
 
         rd_pointer_o => rd_pointer,
-        rd_lock_o => rd_lock
+        rd_lock_o => rd_lock,
+        rd_done_o => rd_done
 
         );
 
@@ -257,6 +264,18 @@ begin
                     --rf_trig_1_meta <= x"123000";
                     --pa_trig <= '1';
                     --pa_trig_meta <= x"89a";
+                    --soft_trig <= '1';
+                    any_trig <= '1';
+                elsif clock_counter = where_trigger_2 then
+                    -- pick one plus meta
+                    --pps_trig <= '1';
+                    --ext_trig <= '1';
+                    --rf_trig_0 <= '1';
+                    --rf_trig_0_meta <= x"00000f";
+                    --rf_trig_1 <= '1';
+                    --rf_trig_1_meta <= x"123000";
+                    pa_trig <= '1';
+                    pa_trig_meta <= x"89a";
                     --soft_trig <= '1';
                     any_trig <= '1';
                 else
@@ -321,9 +340,12 @@ begin
                 write(v_OLINE,rd_lock,right,1);
                 write(v_OLINE,' ');
 
-                write(v_OLINE,read_enable,right,1);
+                write(v_OLINE,rd_done,right,2);
                 write(v_OLINE,' ');
 
+                write(v_OLINE,read_enable,right,1);
+                write(v_OLINE,' ');
+                
                 write(v_OLINE,read_valid,right,1);
                 write(v_OLINE,' ');
 

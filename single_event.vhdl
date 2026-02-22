@@ -229,7 +229,6 @@ begin
 
     );
 
-    -- REFACTOR
     proc_fill_event_on_trig : process(rst_i, wr_clk_i)
     begin
         if rst_i = '1' then
@@ -264,6 +263,7 @@ begin
                 run_number <= (others=>'0');
                 event_number <= (others=>'0');
                 internal_input_data <= (others=>'0');
+                wr_busy_o <= '0';
 
             -- remember to assert wr_en_i after readout has happened
             -- write waveforms to buffer and wait for trigger signal to latch meta data

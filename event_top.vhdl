@@ -63,7 +63,8 @@ entity event_top is
         wr_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
 
         rd_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
-        rd_lock_o : out std_logic
+        rd_lock_o : out std_logic;
+        rd_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0)
 
     );
 end event_top;
@@ -390,11 +391,14 @@ begin
                     -- signals to reset the event buffers
                     if did_read(0) or forced_reset then
                         clear(0) <= '1';
+                        wr_events(0) <= '0';
                     else 
                         clear(1) <= '0';
                     end if;
                     if did_read(1) or forced_reset then
                         clear(1) <= '1';
+                        wr_events(1) <= '0';
+
                     else
                         clear(1) <= '0';
                     end if;
@@ -404,10 +408,13 @@ begin
         end if;
     end process;
 
+    --rd_pointer_o <= clear;
     rd_pointer_o <= rd_events;
+
     --rd_pointer_o <= read_ready;
 
     rd_lock_o <= read_lock;
+    rd_done_o <= read_done;
 
     proc_rd_event_control : process(rst_i, rd_clk_i)
     begin
@@ -450,7 +457,7 @@ begin
                 end if;
 
                 -- cdc this stuff, but once rd done goes high we unlock the readout pointer send the did read to the write side to reset the buffer
-                if read_done(0) and read_lock then
+                if read_done(0) then
                     rd_events(0) <= '0';
                     did_read(0) <= '1';
                     read_lock <= '0';
@@ -458,7 +465,7 @@ begin
                     did_read(0) <= '0';
                 end if;
 
-                if read_done(1) and read_lock then
+                if read_done(1) then
                     rd_events(1) <= '0';
                     did_read(1) <= '1';
                     read_lock <= '0';
