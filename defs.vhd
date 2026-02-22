@@ -17,5 +17,5 @@ package defs is
 	constant NUM_PA_CHANNELS : integer:=4;
 	constant SAMPLE_LENGTH : integer:=8;
 	constant NUM_SAMPLES : integer :=4;
-
+	constant NUM_EVENTS : integer := 2;
 end defs;

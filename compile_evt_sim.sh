@@ -35,3 +35,7 @@ ghdl -e --std=08 single_event_tb
 
 echo "compiling event top"
 ghdl -a --std=08 event_top.vhdl
+
+echo "compiling event top tb"
+ghdl -a --std=08 event_top_tb.vhdl
+ghdl -e --std=08 event_top_tb

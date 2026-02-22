@@ -270,7 +270,7 @@ begin
             elsif wr_en_i then
 
                 --internal_wr_en <= '1';
-                
+                wr_busy_o <= '1';
                 internal_input_data <= waveform_data_i;
                 -- fill trigger meta data on a trigger input
                 if rf_trig_0_i and (not trigger_hold) then
@@ -293,7 +293,6 @@ begin
                 if (rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig_i or ext_trig_i or pps_trig_i) and (not trigger_hold) then
                     which_trigger <= "00" & pa_trig_i & rf_trig_1_i & rf_trig_0_i & pps_trig_i & ext_trig_i & soft_trig_i;
                     trigger_hold <= '1'; -- trigger hold once we get a trigger and is only dropped is wr_en_i is low, ie has filled event and upper module de asserts
-                    wr_busy_o <= '0'; --same as trigger hold
                     for i in 0 to NUM_CHANNELS-1 loop
                         if rf_trig_0_i or rf_trig_1_i or pa_trig_i then
                             post_trigger_wait_clks((i+1)*10 -1 downto i*10) <= rf_waits(i);
@@ -321,11 +320,11 @@ begin
                 if buffers_filled then
                     internal_wr_en <= '0';
                     data_ready_o <= '1';
-                    wr_busy_o <= '0';
+                    --wr_busy_o <= '0';
                 else
                     internal_wr_en <= '1';
                     data_ready_o <= '0';
-                    wr_busy_o <= '1';
+                    --wr_busy_o <= '1';
                 end if;
 
             end if;
@@ -336,6 +335,7 @@ begin
     --read_address_o <= std_logic_vector(read_counter);
 
 
+    data_ready_rd_clk_o <= read_side_buffers_filled(1);
     -- REFACTOR!!!!
     proc_map_sbc_read_addr : process(rst_i, rd_clk_i)
     begin
