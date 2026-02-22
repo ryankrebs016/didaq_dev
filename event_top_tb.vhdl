@@ -44,6 +44,8 @@ component event_top is
         soft_trig_i : in std_logic;
         ext_trig_i : in std_logic; -- raw ext trigger, needs sync chain
 
+        run_number_i : in std_logic_vector(15 downto 0);
+
         -- to gpio
         event_ready_o : out std_logic; -- if any read ready signals
 
@@ -51,7 +53,7 @@ component event_top is
         pps_clk_i : in std_logic; -- if on diff clock
         pps_i : in std_logic; -- single clock wide pps pulse, not raw
         do_pps_trig_i : in std_logic; -- from regs
-
+        pps_trig_holdoff_i : in std_logic_vector(31 downto 0);
         -- read side clock. things are either manual which go through registers
         -- or with automatic event control which reads out 1 event at a time with a 
         -- pop data signal
@@ -71,6 +73,7 @@ component event_top is
         wr_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         wr_busy_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         wr_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
+        trigger_deadtime_o : out std_logic;
 
         rd_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         rd_lock_o : out std_logic;
@@ -113,8 +116,9 @@ signal pps_counter : std_logic_vector(31 downto 0) := (others=>'0');
 signal clk_on_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 signal clk_on_last_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 signal do_pps_trig : std_logic := '0';
+signal pps_trig_holdoff : std_logic_vector(31 downto 0):=x"00000000";
 
-signal run_number : std_logic_vector(15 downto 0) := x"0001";
+signal run_number : std_logic_vector(15 downto 0) := x"000f";
 signal event_number : std_logic_vector(23 downto 0) := x"000002";
 signal event_ready : std_logic := '0';
 
@@ -144,7 +148,9 @@ signal current_read_address : std_logic_vector(15 downto 0) := (others=>'0');
 signal wait_rd_counter : unsigned(31 downto 0) := x"00000007";
 signal test : std_logic_vector(31 downto 0) := (others=>'0');
 constant where_trigger : integer := 600;
-constant where_trigger_2 : integer := 13350;
+constant where_trigger_2 : integer := 1000;--13350;
+constant dummy_trigger : integer := 650;
+
 
 signal do_loop : std_logic := '1';
 constant header : string :=  "clk_counter wr_enable";
@@ -152,6 +158,7 @@ constant header : string :=  "clk_counter wr_enable";
 signal wr_pointer : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal wr_busy : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal wr_done : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
+signal trigger_deadtime : std_logic := '0';
 signal rd_done : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 
 signal rd_pointer : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
@@ -180,12 +187,13 @@ begin
         soft_trig_i => soft_trig,
         ext_trig_i => ext_trig,
 
+        run_number_i => run_number,
         event_ready_o => event_ready,
 
         pps_clk_i => clock,
         pps_i => pps,
         do_pps_trig_i => pps_trig,
-
+        pps_trig_holdoff_i => pps_trig_holdoff,
         rd_clk_i => clock,
         rd_pulse_i => read_enable,
         
@@ -200,7 +208,7 @@ begin
         wr_pointer_o => wr_pointer,
         wr_busy_o => wr_busy,
         wr_done_o => wr_done,
-
+        trigger_deadtime_o => trigger_deadtime,
         rd_pointer_o => rd_pointer,
         rd_lock_o => rd_lock,
         rd_done_o => rd_done
@@ -267,16 +275,11 @@ begin
                     --soft_trig <= '1';
                     any_trig <= '1';
                 elsif clock_counter = where_trigger_2 then
-                    -- pick one plus meta
-                    --pps_trig <= '1';
-                    --ext_trig <= '1';
-                    --rf_trig_0 <= '1';
-                    --rf_trig_0_meta <= x"00000f";
-                    --rf_trig_1 <= '1';
-                    --rf_trig_1_meta <= x"123000";
                     pa_trig <= '1';
                     pa_trig_meta <= x"89a";
-                    --soft_trig <= '1';
+                    any_trig <= '1';
+                elsif clock_counter = dummy_trigger then
+                    ext_trig <= '1';
                     any_trig <= '1';
                 else
                     pps_trig <= '0';
@@ -292,6 +295,11 @@ begin
 
                 end if;
 
+                if clock_counter = 200 then
+                    pps<='1';
+                else
+                    pps<='0';
+                end if;
 
                 if clock_counter > 1000 and event_ready='1' then
                     read_enable <= '1';
@@ -324,6 +332,9 @@ begin
                 write(v_OLINE,pa_trig,right,1);
                 write(v_OLINE, ' ');
     
+                write(v_OLINE,trigger_deadtime,right,1);
+                write(v_OLINE,' ');
+
                 write(v_OLINE,wr_pointer,right,wr_pointer'length);
                 write(v_OLINE,' ');
                 write(v_OLINE,wr_busy,right,wr_busy'length);

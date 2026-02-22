@@ -34,6 +34,8 @@ entity event_top is
         soft_trig_i : in std_logic;
         ext_trig_i : in std_logic; -- raw ext trigger, needs sync chain
 
+        run_number_i : in std_logic_vector(15 downto 0);
+
         -- to gpio
         event_ready_o : out std_logic; -- if any read ready signals
 
@@ -41,7 +43,7 @@ entity event_top is
         pps_clk_i : in std_logic; -- if on diff clock
         pps_i : in std_logic; -- single clock wide pps pulse, not raw
         do_pps_trig_i : in std_logic; -- from regs
-
+        pps_trig_holdoff_i : in std_logic_vector(31 downto 0);
         -- read side clock. things are either manual which go through registers
         -- or with automatic event control which reads out 1 event at a time with a 
         -- pop data signal
@@ -61,6 +63,7 @@ entity event_top is
         wr_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         wr_busy_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         wr_done_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
+        trigger_deadtime_o : out std_logic;
 
         rd_pointer_o : out std_logic_vector(NUM_EVENTS-1 downto 0);
         rd_lock_o : out std_logic;
@@ -150,11 +153,11 @@ architecture rtl of event_top is
     signal clk_counter_last_pps : unsigned(31 downto 0) := (others=>'0');
     signal clk_counter_last_last_pps : unsigned(31 downto 0) := (others=>'0');
 
-    -- not needed
-    --signal evt_pps_counter : unsigned(31 downto 0) := (others=>'0');
-    --signal evt_clk_counter : unsigned(31 downto 0) := (others=>'0');
-    --signal evt_clk_counter_last_pps : unsigned(31 downto 0) := (others=>'0');
-    --signal evt_clk_counter_last_last_pps : unsigned(31 downto 0) := (others=>'0');
+    -- pps trigger generators
+    signal pps_trig : std_logic := '0'; -- pull from regs, write to reg, then pull low to queue the next one while perfroming the pps trig
+    signal pps_trig_hold : std_logic := '0';
+    signal pps_trig_holdoff : unsigned(31 downto 0) := (others=>'0'); -- pull in from regs
+    signal pps_trig_counter : unsigned(31 downto 0) := (others=>'0');
 
     -- wr, rd, and full event signals
     signal wr_enable : std_logic := '0';
@@ -189,7 +192,7 @@ architecture rtl of event_top is
     type event_counters_t is array(NUM_EVENTS-1 downto 0) of unsigned(15 downto 0);
     --signal event_counter : event_counters_t := (others=>(others=>'0')); -- count after new wr enabled
     signal event_counter : std_logic_vector(23 downto 0) := (others=>'0');
-    signal run_number : std_logic_vector(15 downto 0) := (others=>'0'); -- pull from regs
+    --signal run_number : std_logic_vector(15 downto 0) := (others=>'0'); -- pull from regs
     
     -- trigger data to be multiplexed to single events
     signal which_trigger : std_logic_vector(7 downto 0) := (others=>'0');
@@ -199,15 +202,9 @@ architecture rtl of event_top is
     signal soft_trig : std_logic := '0'; -- pull from regs
     signal ext_trig : std_logic_vector(1 downto 0) := (others=>'0'); -- vector for sync chain
 
-    -- pps trigger generators
-    signal pps_trig : std_logic := '0'; -- pull from regs, write to reg, then pull low to queue the next one while perfroming the pps trig
-    signal pps_trig_hold : std_logic := '0';
-    signal pps_trig_holdoff : unsigned(31 downto 0) := (others=>'0'); -- pull in from regs
-    signal pps_trig_counter : unsigned(31 downto 0) := (others=>'0');
 
     -- things to check for trigger deadtime to complete an event if multiple trigger while filling a buffer
     signal any_trig : std_logic := '0';
-    signal trig_deadtime : unsigned(8 downto 0) := (others=>'0'); -- deadtime for when we have a writing event with a trigger, and if we get a second trigger before the buffer is written we ignore it.
 
 begin
 
@@ -227,7 +224,7 @@ begin
             soft_reset_i => soft_resets(evt),
             waveform_data_i => data_i,
             
-            run_number_i => run_number,
+            run_number_i => run_number_i,
             event_number_i => event_counter,
             
             pps_clk_i => pps_clk_i,
@@ -237,15 +234,15 @@ begin
             clk_on_last_pps_i => std_logic_vector(clk_counter_last_pps),
             clk_on_last_last_pps_i => std_logic_vector(clk_counter_last_last_pps),
             
-            pps_trig_i => pps_trig,
-            rf_trig_0_i => rf_trig_0_i,
+            pps_trig_i => pps_trig and not trigger_deadtime,
+            rf_trig_0_i => rf_trig_0_i and not trigger_deadtime,
             rf_trig_0_meta_i => rf_trig_0_meta_i,
-            rf_trig_1_i => rf_trig_1_i,
+            rf_trig_1_i => rf_trig_1_i and not trigger_deadtime,
             rf_trig_1_meta_i => rf_trig_1_meta_i,
-            pa_trig_i => pa_trig_i,
+            pa_trig_i => pa_trig_i and not trigger_deadtime,
             pa_trig_meta_i => pa_trig_meta_i,
-            soft_trig_i => soft_trig,
-            ext_trig_i => ext_trig(1),
+            soft_trig_i => soft_trig and not trigger_deadtime,
+            ext_trig_i => ext_trig(1) and not trigger_deadtime,
 
             wr_busy_o => wr_busy(evt),
             data_ready_o => wr_done(evt),
@@ -270,6 +267,7 @@ begin
     wr_pointer_o <= wr_events;
     wr_busy_o <= wr_busy;
     wr_done_o <= wr_done;
+    trigger_deadtime_o <= trigger_deadtime;
 
     proc_wr_event_control : process(rst_i, wr_clk_i)
     begin
@@ -316,35 +314,47 @@ begin
 
                     -- figure out valid triggers from trigger deadtime counter thing. both buffers shouldn't be in this same wr state. running extra trigger deadtime might not
                     -- be an issue otherwise as in if the other is full it doesn;t matter since it needs to readout. and if it's free it will start anyway
-                    -- wr_busy goes high on a trigger, then wr done goes high until readout happens
-                    if any_trig='1' and trigger_deadtime='0' and wr_events(0)='1' and wr_busy(0)='0' and wr_done(0)='0' then
-                        -- send triggers and kick start trigger deadtime counter
-                        start_trigger_deadtime <= '1';
+                    -- wr_busy goes high whenever the event is enabled, then wr done goes high until readout happens
+                    if any_trig='1' and trigger_deadtime='0' and wr_events(0)='1' and wr_done(0)='0' then
+                        -- send trigger, block new triggers, and kick start trigger deadtime counter
                         event_counter <= std_logic_vector(unsigned(event_counter)+1);
-                        -- I think I can just send trigger_deadtime as not trigger_valid to the events
-                    elsif any_trig='1' and trigger_deadtime='0' and wr_events(1)='1' and wr_busy(1)='0' and wr_done(1)='0' then
-                        -- send triggers and kick start trigger deadtime counter
-                        start_trigger_deadtime <= '1';
-                        event_counter <= std_logic_vector(unsigned(event_counter)+1);
+                        trigger_deadtime_counter <= trigger_deadtime_counter + 1;
+                        trigger_deadtime <= '1';
 
-                    else
-                        start_trigger_deadtime <= '0';
+
+                        -- I think I can just send trigger_deadtime as not trigger_valid to the events
+                    elsif any_trig='1' and trigger_deadtime='0' and wr_events(1)='1' and wr_done(1)='0' then
+                        -- send trigger, block new triggers, and kick start trigger deadtime counter
+                        event_counter <= std_logic_vector(unsigned(event_counter)+1);
+                        trigger_deadtime_counter <= trigger_deadtime_counter + 1;
+                        trigger_deadtime <= '1';
+
                     end if;
 
                     -- trigger deadtime things (start counter=0, once kick start counter starts, then trigger deadtime goes high causing counter to continue, once counter exceeds target, deadtime goes low and counter should reset)
-                    if trigger_deadtime_counter<trigger_deadtime_target and trigger_deadtime_counter /= 0 then
+                    if trigger_deadtime='1' or  trigger_deadtime_counter > 0 then
                         --block triggers
-                        trigger_deadtime <= '1';
-                    else
+                        --trigger_deadtime <= '1';
+                        if  trigger_deadtime_counter>trigger_deadtime_target then
+                            trigger_deadtime <= '0';
+                            trigger_deadtime_counter <= (others=>'0');
+                        else
+
+                            trigger_deadtime_counter <= trigger_deadtime_counter + 1;
+                        end if;
+                    end if;
+                    --else
                         -- send triggers
-                        trigger_deadtime <= '0';
-                    end if;
+                    --    trigger_deadtime_counter <= (others=>'0');
+                    --    trigger_deadtime <= '0';
+                    --end if;
+
                     -- trigger deadtime counter
-                    if start_trigger_deadtime or trigger_deadtime then -- may cause extra count if another trigger happens right at the end of the counter, should be okay as long as trigger isn't stuck high
-                        trigger_deadtime_counter <= trigger_deadtime_counter + 1;
-                    elsif not trigger_deadtime then
-                        trigger_deadtime_counter <= (others=>'0');
-                    end if;
+                    --if start_trigger_deadtime or trigger_deadtime then -- may cause extra count if another trigger happens right at the end of the counter, should be okay as long as trigger isn't stuck high
+                    --    trigger_deadtime_counter <= trigger_deadtime_counter + 1;
+                    --elsif not trigger_deadtime then
+                    --    trigger_deadtime_counter <= (others=>'0');
+                    --end if;
 
 
                     -- choose which events to start writing, first trigger in an event should start the next buffer
@@ -479,6 +489,8 @@ begin
 
     proc_trig_misc : process(rst_i, wr_clk_i)
     begin
+        any_trig <= rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig or ext_trig(1) or pps_trig;
+
         if rst_i = '1' then
             -- resets
             any_trig <= '0';
@@ -488,7 +500,6 @@ begin
             -- idk if it's easier to process the triggers here or if we should do it in the individual events?
             
             -- know if we have any trigger at this level to use the trigger deadtime counter
-            any_trig <= rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig or ext_trig(1) or pps_trig;
 
             -- sync raw ext trig in to wr clk
             ext_trig(0) <= ext_trig_i;
@@ -497,6 +508,7 @@ begin
         end if;
     end process;
 
+    pps_trig_holdoff <= unsigned(pps_trig_holdoff_i);
     -- clock counter and pps counter, pps trig generator -- NEED TO PULL IN REGS -- OTHERWISE DONE
     proc_clk_counter_and_pps_trig : process(rst_i, pps_clk_i)
     begin
@@ -511,25 +523,29 @@ begin
             clk_counter <= clk_counter + 1;
             if pps_i = '1' then
                 pps_counter <= pps_counter + 1;
-                clk_counter_last_pps <= pps_counter;
+                clk_counter_last_pps <= clk_counter;
                 clk_counter_last_last_pps <= clk_counter_last_pps;
             end if;
 
-            -- pps trigger stuff
-            if do_pps_trig_i='1' and pps_trig_hold='0' then
-                pps_trig_hold <= '1';
-                pps_trig_counter <= (others=>'0');
-            end if;
+            if do_pps_trig_i = '1' and pps_i = '1' then
+                --start the pps trig timer
+                pps_trig_counter <= pps_trig_counter +1;
 
-            if pps_trig_hold then
-                pps_trig_counter <= pps_trig_counter + 1;
+            elsif do_pps_trig_i = '1' then
+                -- continue timer
                 if pps_trig_counter >= pps_trig_holdoff then
                     pps_trig_hold <= '0';
                     pps_trig <= '1';
+                    pps_trig_counter <= (others=>'0');
+                elsif pps_trig_counter > 0 then
+                    pps_trig_counter <= pps_trig_counter + 1;
+                    pps_trig <= '0';
                 else 
+                    pps_trig_counter <= (others=>'0');
                     pps_trig <= '0';
                 end if;
             end if;
+
         end if;
     end process;
 end rtl;
