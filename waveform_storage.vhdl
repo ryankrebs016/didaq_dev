@@ -166,8 +166,7 @@ architecture rtl of waveform_storage is
     signal wr_clk_rd_done : std_logic := '0';
     signal last_wr_clk_rd_done : std_logic := '0';
 
-    type rd_state_t is (wait_rd, rd, wr_busy);
-    signal out_state : rd_state_t := wait_rd;
+    signal queue_data : std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
 
 begin
 
@@ -282,7 +281,10 @@ begin
         -- normally outside of a process but I need some logic to translate here
 
         --test(8 downto 0) <= std_logic_vector(unsigned(rd_addrs(0)));
-        if rd_en_i then
+
+        -- CHANNEL SWITCHING POINTS TO THE NEW CHANNEL DATA BEFORE IT IS GRABBED, CAUSING DUPLICATE DATA, NEED TO WAIT FOR LAST CHANNEL SAMPLE
+        -- BEFORE SWAPPING, DO HERE OR HIGH LEVEL?
+        if wr_finished_o then
             rd_ens <= (others=>'1');
             for i in 0 to NUM_CHANNELS-1 loop
                 --rd_ens(i) <= '0';
@@ -300,8 +302,8 @@ begin
                     rd_addrs(i) <= rd_clk_wr_addrs(i);
                 end if;
             end loop;
-            rd_data_valid_o <= ram_data_valid(to_integer(unsigned(rd_channel_i)));
-            data_o <= internal_output_data(to_integer(unsigned(rd_channel_i)));
+            rd_data_valid_o <= ram_data_valid(to_integer(unsigned(internal_read_channel)));
+            data_o <= internal_output_data(to_integer(unsigned(internal_read_channel)));
         else
             rd_ens <= (others=>'0');
             rd_data_valid_o <= '0';
@@ -310,8 +312,11 @@ begin
                 rd_addrs(i) <= rd_clk_wr_addrs(i);
             end loop;
         end if;
-
-
+        
+        if rising_edge(rd_clk_i) then
+            internal_read_channel <= rd_channel_i;
+            
+        end if;
         
         /*
          --clocked output data is not the way since it incurs a clock cycle of delay to move through modules

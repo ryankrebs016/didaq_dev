@@ -270,7 +270,6 @@ begin
             elsif wr_en_i then
 
                 --internal_wr_en <= '1';
-                wr_busy_o <= '1';
                 internal_input_data <= waveform_data_i;
                 -- fill trigger meta data on a trigger input
                 if rf_trig_0_i and (not trigger_hold) then
@@ -287,6 +286,13 @@ begin
                 
                 if not trigger_hold then
                     any_trig <= rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig_i or ext_trig_i or pps_trig_i;
+                end if;
+
+                if rf_trig_0_i or rf_trig_1_i or pa_trig_i or soft_trig_i or ext_trig_i or pps_trig_i or trigger_hold then
+
+                    wr_busy_o <= '1';
+                else
+                    wr_busy_o <= '0';
                 end if;
 
                 -- first instance of a trigger
@@ -414,9 +420,9 @@ begin
                     elsif unsigned(read_counter)=9 then
                         data_o <= x"00000" & pa_trig_meta;
                         ram_rd_en <= '1';
-                        ram_read_address <= (others=>'0');
+                        --ram_read_address <= (others=>'0');
                         channel_to_read <= (others=>'0');
-                        --ram_read_address <= std_logic_vector(unsigned(ram_read_address) + 1);
+                        ram_read_address <= std_logic_vector(unsigned(ram_read_address) + 1);
 
                     elsif unsigned(read_counter) >= HEAD and unsigned(read_counter) < HEAD+EVENT_WAVEFORM_BLOCKS then
                         ram_rd_en <= '1';

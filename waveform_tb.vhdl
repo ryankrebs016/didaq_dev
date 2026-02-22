@@ -192,26 +192,6 @@ begin
                         read_channel <= std_logic_vector(unsigned(read_channel)+1);
                     end if;
                     
-                    --if to_unsigned(to_integer(read_counter) / 512, read_channel'length) < 24 then
-                    --    read_channel <= std_logic_vector(to_unsigned(to_integer(read_counter) / 512, read_channel'length));
-                    --end if;
-                        --if read_counter mod 512 = 0 then
-                    --if (to_integer(read_counter) mod 512 )= 511 then
-                    --    read_channel <= std_logic_vector(1+to_unsigned(to_integer(read_counter) / 512, read_channel'length));
-                    --elsif to_unsigned(to_integer(read_counter) / 512, read_channel'length) < 24 then
-                    --    read_channel <= std_logic_vector(to_unsigned(to_integer(read_counter) / 512, read_channel'length));
-                    --else
-                    --    read_channel <= "00100";
-                    --end if;
-
-                    --end if;
-                    --if read_counter <= 511 then
-                    --    read_channel <= "00000";
-                    --elsif read_counter <= 1023 then
-                    --    read_channel <= "00001";
-                    --else
-                    --    read_channel <= "00010";
-                    --end if;
                 else
                     --read_block <= (others=>'0');
                     --read_channel <= (others=>'0');
