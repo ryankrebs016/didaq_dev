@@ -28,7 +28,7 @@ sampling_rate=1e9
 int_factor=1
 int_rate=sampling_rate*int_factor
 num_antennas=4
-file='RNO_season_2024.json'
+file='data/RNO_season_2024.json'
 det=Detector(file,source="json")
 
 det.update(dt.datetime.now())
@@ -102,7 +102,7 @@ for station in stations:
     phase_delays[station]=dict(zip(channels,dts))
 
 print(phase_delays)
-f=open(f"{version}_rel_group_delays.json","w")
+f=open(f"data/{version}_rel_group_delays.json","w")
 json.dump(phase_delays,f,indent=4)
 
 all_delays=np.zeros((len(stations),len(channels)))

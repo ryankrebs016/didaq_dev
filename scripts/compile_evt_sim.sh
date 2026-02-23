@@ -7,7 +7,7 @@ echo "compiling signal sync"
 ghdl -a --std=08 rtl/signal_sync.vhdl
 
 echo "compiling gps"
-ghdl -a --std=08 gps.vhdl
+ghdl -a --std=08 rtl/gps.vhdl
 
 echo "compiling ram"
 ghdl -a --std=08 rtl/single_channel_ram.vhdl
