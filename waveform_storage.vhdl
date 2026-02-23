@@ -64,6 +64,7 @@ entity waveform_storage is
         rd_channel_i    : in std_logic_vector(4 downto 0); -- same time as rd_en_i
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
 
+        rd_clk_wr_finished_o : out std_logic;
         rd_data_valid_o : out std_logic; -- data valid signal
         data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) -- output data 32 bits to match reg size, may need update with 9 bits
         --test : out std_logic_vector(31 downto 0)
@@ -158,6 +159,7 @@ architecture rtl of waveform_storage is
 
     type count_addrs is array(NUM_CHANNELS-1 downto 0) of unsigned(32 downto 0);
 
+    signal rd_clk_wr_finished : std_logic_vector(1 downto 0) := (others=>'0');
     signal rd_clk_wr_addrs: addrs := (others=>(others=>'0'));
     signal end_wr_addrs: addrs := (others=>(others=>'0'));
     signal count_rd_addrs: count_addrs := (others=>(others=>'0'));
@@ -270,6 +272,7 @@ begin
     end process;
 
 
+    rd_clk_wr_finished_o <= rd_clk_wr_finished(1);
 
     proc_read_ram : process(rst_i, rd_clk_i)
     begin
@@ -315,6 +318,9 @@ begin
         
         if rising_edge(rd_clk_i) then
             internal_read_channel <= rd_channel_i;
+
+            rd_clk_wr_finished(0) <= wr_finished_o;
+            rd_clk_wr_finished(1) <= rd_clk_wr_finished(0);
             
         end if;
         

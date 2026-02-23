@@ -132,6 +132,7 @@ architecture rtl of single_event is
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
 
 
+        rd_clk_wr_finished_o : out std_logic;
         rd_data_valid_o : out std_logic; -- data valid signal
         data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):= (others=>'0') -- output data 32 bits to match reg size, may need update with 9 bits
 
@@ -201,7 +202,7 @@ architecture rtl of single_event is
     signal waveform_read_valid : std_logic := '0';
     signal waveform_read_data : std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
     signal rd_clk_data_ready : std_logic := '0';
-
+    signal rd_clk_wr_finished : std_logic := '0';
 begin
     waveform_ram : waveform_storage
     port map(
@@ -224,6 +225,7 @@ begin
         rd_channel_i => channel_to_read,
         rd_block_i => ram_read_address,
         
+        rd_clk_wr_finished_o => rd_clk_wr_finished,
         rd_data_valid_o => waveform_read_valid, -- figure out clock delay and logic
         data_o => waveform_read_data
 
@@ -341,7 +343,7 @@ begin
     --read_address_o <= std_logic_vector(read_counter);
 
 
-    data_ready_rd_clk_o <= read_side_buffers_filled(1);
+    data_ready_rd_clk_o <= rd_clk_wr_finished;-- read_side_buffers_filled(1);
     -- REFACTOR!!!!
     proc_map_sbc_read_addr : process(rst_i, rd_clk_i)
     begin
@@ -358,11 +360,11 @@ begin
 
     
         elsif rising_edge(rd_clk_i) then
-            read_side_buffers_filled(0) <= buffers_filled;
-            read_side_buffers_filled(1) <= read_side_buffers_filled(0);
+            --read_side_buffers_filled(0) <= buffers_filled;
+            --read_side_buffers_filled(1) <= read_side_buffers_filled(0);
 
             -- cdc not working from wr side buffers_filled. held long enough, maybe just ignore?
-            if read_side_buffers_filled(1) = '0' then-- and rd_en_i='0' then
+            if rd_clk_wr_finished = '0' then-- and rd_en_i='0' then
                 -- reset some signals?
                 ram_rd_en <= '0';
                 data_o <= (others=>'1');
@@ -373,7 +375,7 @@ begin
                 ram_read_address <= (others=>'0');
 
                 
-            elsif read_side_buffers_filled(1) = '1' then
+            elsif rd_clk_wr_finished = '1' then
                 -- assign data out so rd enable pulses new data to the output
                 -- need to do a look ahead so if writing is done the first block is already there
                 -- then each read updates the read address

@@ -39,6 +39,7 @@ component waveform_storage is
         rd_channel_i    : in std_logic_vector(4 downto 0); -- same time as rd_en_i
         rd_block_i      : in std_logic_vector(8 downto 0); -- same time as rd_en_i
 
+        rd_clk_wr_finished_o : out std_logic;
         rd_data_valid_o : out std_logic; -- data valid signal
         data_o          : out std_logic_vector(NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0) -- output data 32 bits to match reg size, may need update with 9 bits
         --test : out std_logic_vector(31 downto 0)
@@ -71,6 +72,7 @@ signal wr_clk_rd_done : std_logic := '0';
 signal ram_enable : std_logic := '0';
 signal wr_finished : std_logic := '0';
 
+signal rd_clk_wr_finished : std_logic := '0';
 signal slow_clock : std_logic := '1';
 signal read_enable : std_logic := '0';
 signal read_channel : std_logic_vector (4 downto 0) := (others=>'0');
@@ -112,6 +114,7 @@ begin
         rd_en_i => read_enable,
         rd_channel_i => read_channel,
         rd_block_i => read_block,
+        rd_clk_wr_finished_o => rd_clk_wr_finished,
         rd_data_valid_o => read_valid,
         data_o => samples_out
         --test => test
@@ -175,14 +178,14 @@ begin
                 elsif clock_counter > 4000 then
                     read_enable <= '0';
                     soft_reset <= '1';
-                elsif clock_counter > 1000 and wr_finished='1' then
+                elsif clock_counter > 1000 and rd_clk_wr_finished='1' then
                     read_enable <= '1';
                 else
                     read_enable <= '0'; -- need something to off read enable and then pulse wr_clk_rd_done
                 end if;
 
                 -- in single event I just need to queue up the first samples of channel 0 early and then the rest should be ok
-                if wr_finished and not read_enable then
+                if rd_clk_wr_finished and not read_enable then
                     read_channel <= "00000";
                     read_block <= (others=>'0');
                 elsif read_enable = '1' then

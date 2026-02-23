@@ -466,6 +466,12 @@ begin
                 --    rd_events <= (others=>'0');
                 end if;
 
+                if read_ready(0) or read_ready(1) then
+                    data_ready_rd_clk_o <= '1';
+                else
+                    data_ready_rd_clk_o <= '0';
+                end if;
+
                 -- cdc this stuff, but once rd done goes high we unlock the readout pointer send the did read to the write side to reset the buffer
                 if read_done(0) then
                     rd_events(0) <= '0';

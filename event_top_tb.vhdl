@@ -116,7 +116,7 @@ signal pps_counter : std_logic_vector(31 downto 0) := (others=>'0');
 signal clk_on_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 signal clk_on_last_last_pps : std_logic_vector(31 downto 0):= (others=>'0');
 signal do_pps_trig : std_logic := '0';
-signal pps_trig_holdoff : std_logic_vector(31 downto 0):=x"00000000";
+signal pps_trig_holdoff : std_logic_vector(31 downto 0):=x"0000000f";
 
 signal run_number : std_logic_vector(15 downto 0) := x"000f";
 signal event_number : std_logic_vector(23 downto 0) := x"000002";
@@ -262,6 +262,10 @@ begin
                     wr_enable <= '1';
                 end if;
 
+                --if clock_counter > 100 then
+                --    pps_trig <= '1';
+                --end if;
+                
                 if clock_counter = where_trigger then
                     -- pick one plus meta
                     --pps_trig <= '1';
@@ -301,7 +305,8 @@ begin
                     pps<='0';
                 end if;
 
-                if clock_counter > 1000 and event_ready='1' then
+                -- would be from reg module after sbc reads the reg, updates output data
+                if clock_counter > 1000 and read_ready='1' then
                     read_enable <= '1';
                 else
                     read_enable <= '0'; -- need something to off read enable and then pulse wr_clk_rd_done
