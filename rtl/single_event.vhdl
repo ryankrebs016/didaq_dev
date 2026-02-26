@@ -398,6 +398,7 @@ begin
                 else
 
                     -- map event data out
+                    -- TODO: CDC sync all data here except waveforms
                     if unsigned(read_counter)=0 then
                         data_o <= x"0000" & run_number;
                     elsif unsigned(read_counter)=1 then
