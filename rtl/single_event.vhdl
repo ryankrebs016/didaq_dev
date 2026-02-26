@@ -177,16 +177,33 @@ architecture rtl of single_event is
     signal run_number : std_logic_vector(15 downto 0) := (others=>'0');
     signal event_number : std_logic_vector(23 downto 0) := (others=>'0');
 
+    -- read side event header info
+    signal event_run_number : std_logic_vector(15 downto 0) := (others=>'0');
+    signal event_event_number : std_logic_vector(23 downto 0) := (others=>'0');
+
     -- TODO: decide pps counter clock
+    signal pps_count : std_logic_vector(31 downto 0) := (others=>'0');
+    signal clk_count : std_logic_vector(31 downto 0) := (others=>'0');
+    signal clk_on_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
+    signal clk_on_last_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
+    
+    -- read side event timing info
     signal event_pps_count : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_count : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_on_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
     signal event_clk_on_last_last_pps : std_logic_vector(31 downto 0) := (others=>'0');
-    
+
     signal which_trigger : std_logic_vector(7 downto 0) := (others=>'0');
     signal rf_trig_0_meta : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
     signal rf_trig_1_meta : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
     signal pa_trig_meta : std_logic_vector(NUM_BEAMS-1 downto 0) := (others=>'0');
+
+    -- read side trigger info
+    signal event_which_trigger : std_logic_vector(7 downto 0) := (others=>'0');
+    signal event_rf_trig_0_meta : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
+    signal event_rf_trig_1_meta : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'0');
+    signal event_pa_trig_meta : std_logic_vector(NUM_BEAMS-1 downto 0) := (others=>'0');
+    
     signal any_trig : std_logic := '0';
 
 
@@ -240,10 +257,10 @@ begin
             trigger_to_ram <= '0';
             any_trig <='0';
             data_ready_o <= '0'; -- super needs to record which event is filled and know when it has been read out
-            event_pps_count <= (others=>'0');
-            event_clk_count <= (others=>'0');
-            event_clk_on_last_pps <= (others=>'0');
-            event_clk_on_last_last_pps <= (others=>'0');
+            pps_count <= (others=>'0');
+            clk_count <= (others=>'0');
+            clk_on_last_pps <= (others=>'0');
+            clk_on_last_last_pps <= (others=>'0');
             run_number <= (others=>'0');
             event_number <= (others=>'0');
             internal_input_data <= (others=>'0');
@@ -258,10 +275,10 @@ begin
                 trigger_to_ram <= '0';
                 any_trig <='0';
                 data_ready_o <= '0'; -- super needs to record which event is filled and know when it has been read out
-                event_pps_count <= (others=>'0');
-                event_clk_count <= (others=>'0');
-                event_clk_on_last_pps <= (others=>'0');
-                event_clk_on_last_last_pps <= (others=>'0');
+                pps_count <= (others=>'0');
+                clk_count <= (others=>'0');
+                clk_on_last_pps <= (others=>'0');
+                clk_on_last_last_pps <= (others=>'0');
                 run_number <= (others=>'0');
                 event_number <= (others=>'0');
                 internal_input_data <= (others=>'0');
@@ -313,10 +330,10 @@ begin
                     -- need some work
                     trigger_to_ram <= '1'; -- send trigger to waveform storage to know when to stop
 
-                    event_pps_count <= pps_count_i;
-                    event_clk_count <= clk_count_i;
-                    event_clk_on_last_pps <= clk_on_last_pps_i;
-                    event_clk_on_last_last_pps <= clk_on_last_last_pps_i;
+                    pps_count <= pps_count_i;
+                    clk_count <= clk_count_i;
+                    clk_on_last_pps <= clk_on_last_pps_i;
+                    clk_on_last_last_pps <= clk_on_last_last_pps_i;
 
                     run_number <= run_number_i;
                     event_number <= event_number_i;
@@ -363,7 +380,6 @@ begin
             --read_side_buffers_filled(0) <= buffers_filled;
             --read_side_buffers_filled(1) <= read_side_buffers_filled(0);
 
-            -- cdc not working from wr side buffers_filled. held long enough, maybe just ignore?
             if rd_clk_wr_finished = '0' then-- and rd_en_i='0' then
                 -- reset some signals?
                 ram_rd_en <= '0';
@@ -400,9 +416,9 @@ begin
                     -- map event data out
                     -- TODO: CDC sync all data here except waveforms
                     if unsigned(read_counter)=0 then
-                        data_o <= x"0000" & run_number;
+                        data_o <= x"0000" & event_run_number;
                     elsif unsigned(read_counter)=1 then
-                        data_o <= x"00" & event_number;
+                        data_o <= x"00" & event_event_number;
                     elsif unsigned(read_counter)=2 then
                         data_o <= event_pps_count;
                     elsif unsigned(read_counter)=3 then
@@ -412,16 +428,16 @@ begin
                     elsif unsigned(read_counter)=5 then
                         data_o <= event_clk_on_last_last_pps;
                     elsif unsigned(read_counter)=6 then
-                        data_o <= x"000000" & which_trigger;
+                        data_o <= x"000000" & event_which_trigger;
                     elsif unsigned(read_counter)=7 then
-                        data_o <= x"00" & rf_trig_0_meta;
+                        data_o <= x"00" & event_rf_trig_0_meta;
                     elsif unsigned(read_counter)=8 then
-                        data_o <= x"00" & rf_trig_1_meta;
+                        data_o <= x"00" & event_rf_trig_1_meta;
                         ram_rd_en <= '1';
                         ram_read_address <= (others=>'0');
                         channel_to_read <= (others=>'0');
                     elsif unsigned(read_counter)=9 then
-                        data_o <= x"00000" & pa_trig_meta;
+                        data_o <= x"00000" & event_pa_trig_meta;
                         ram_rd_en <= '1';
                         --ram_read_address <= (others=>'0');
                         channel_to_read <= (others=>'0');
@@ -465,13 +481,106 @@ begin
         end if;
     end process;
 
-    --ADDR_SYNC : signal_sync
-    --port map(
-    --    clkA	=> wr_clk_i,
-    --    clkB	=> rd_clk_i,
-    --    SignalIn_clkA	=> buffers_filled,
-    --    SignalOut_clkB	=> rd_clk_data_ready 
-    --);
+    -- everything here is going from fast clock to slow clock, but these are held for a long time
+    -- so only a ff sync is enough
+    xRUN : for i in 0 to run_number'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> run_number(i),
+            SignalOut_clkB	=> event_run_number(i)
+        );
+    end generate;
 
+    xEVENT : for i in 0 to event_number'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> event_number(i),
+            SignalOut_clkB	=> event_event_number(i)
+        );
+    end generate;
+
+    xPPS : for i in 0 to pps_count'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> pps_count(i),
+            SignalOut_clkB	=> event_pps_count(i)
+        );
+    end generate;
+
+    xCLK : for i in 0 to clk_count'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> clk_count(i),
+            SignalOut_clkB	=> event_clk_count(i)
+        );
+    end generate;
+
+    xCLK_LAST : for i in 0 to clk_on_last_pps'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> clk_on_last_pps(i),
+            SignalOut_clkB	=> event_clk_on_last_pps(i)
+        );
+    end generate;
+
+    xCLK_LASTLAST : for i in 0 to clk_on_last_last_pps'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> clk_on_last_last_pps(i),
+            SignalOut_clkB	=> event_clk_on_last_last_pps(i)
+        );
+    end generate;
+
+    xTRIG : for i in 0 to which_trigger'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=>which_trigger(i),
+            SignalOut_clkB	=> event_which_trigger(i)
+        );
+    end generate;
+
+    xRF0META : for i in 0 to rf_trig_0_meta'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> rf_trig_0_meta(i),
+            SignalOut_clkB	=> event_rf_trig_0_meta(i)
+        );
+    end generate;
+
+    xRF1META : for i in 0 to rf_trig_1_meta'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> rf_trig_1_meta(i),
+            SignalOut_clkB	=> event_rf_trig_1_meta(i)
+        );
+    end generate;
+
+    xPAMETA : for i in 0 to pa_trig_meta'length-1 generate
+        sync : signal_sync
+        port map(
+            clkA	=> wr_clk_i,
+            clkB	=> rd_clk_i,
+            SignalIn_clkA	=> pa_trig_meta(i),
+            SignalOut_clkB	=> event_pa_trig_meta(i)
+        );
+    end generate;
 end rtl;
 
