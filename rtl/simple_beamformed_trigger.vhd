@@ -321,13 +321,13 @@ begin
 
             phased_trigger_reg(1)<=phased_trigger_reg(0);
             phased_servo_reg(1)<=phased_servo_reg(0);
-            trig_metadata_o(7 downto 0) <= std_logic_vector(beamformed_samples(0,0));
+            --trig_metadata_o(7 downto 0) <= std_logic_vector(beamformed_samples(0,0));
 
             -- looks for 0 to 1 transition, phased_trigger_reg'event might work, and can look at single bit being high for saturation scalers
             if phased_trigger_reg="01" then
                 phased_trigger<='1';
                 trig_o<='1';
-                --trig_metadata_o <= triggering_beam_last AND internal_beam_mask;
+                trig_metadata_o <= triggering_beam_last AND internal_beam_mask;
 
             else
                 phased_trigger<='0';

@@ -152,6 +152,9 @@ begin
                 write(v_OLINE, ch0_samples, right, 32);
                 write(v_OLINE, v_SPACE);
 
+                write(v_OLINE, trig_thresholds(7 downto 0), right, 8);
+                write(v_OLINE, v_SPACE);
+
                 write(v_OLINE,trig,right,1);
                 write(v_OLINE, v_SPACE);
 
