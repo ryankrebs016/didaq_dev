@@ -219,7 +219,7 @@ begin
     port map (
         rst_i => rst_i,
         clk_data_i => clk_data_i,
-        enable => internal_phased_trig_en,
+        enable_i => internal_phased_trig_en,
         ch_data_i => downsampling_i,
         ch_data_o => downsampling_o
     );
@@ -240,7 +240,7 @@ begin
     port map (
         rst_i => rst_i,
         clk_data_i => clk_data_i,
-        enable => internal_phased_trig_en,
+        enable_i => internal_phased_trig_en,
         ch_data_i => beaming_i,
         beam_data_o => beaming_o
     );

@@ -12,7 +12,7 @@ entity low_pass_filter is
     port(
             rst_i			:	in	    std_logic;
             clk_data_i	    :   in	    std_logic;
-            enable          :   in      std_logic;
+            enable_i          :   in      std_logic;
             ch_data_i       :   in      std_logic_vector(NUM_PA_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH -1 downto 0);
             ch_data_o       :   out     std_logic_vector(NUM_PA_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH -1 downto 0)
             );
@@ -74,7 +74,7 @@ begin
     end generate;
 
     -- do the upsampling
-    proc_upsample_by_hand:process(clk_data_i, rst_i, enable)
+    proc_upsample_by_hand:process(clk_data_i, rst_i, enable_i)
     begin
         if rst_i = '1' then
             streaming_data <= (others=>(others=>'0'));
@@ -100,7 +100,7 @@ begin
             int_up <= (others=>(others=>'0'));
             interp_data <= (others=>(others=>'0'))
 
-        elsif rising_edge(clk_data_i) and (enable='1')then
+        elsif rising_edge(clk_data_i) and (enable_i='1')then
             for ch in 0 to 3 loop
 
                 --shift sig for full filter mult

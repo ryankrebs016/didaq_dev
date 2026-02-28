@@ -8,12 +8,10 @@ use ieee.numeric_std.all;
 use work.defs.all;
 
 entity upsampling is
-    generic();
-    
     port(
             rst_i       : in std_logic;
             clk_data_i  : in std_logic;
-            enable      : in std_logic;
+            enable_i      : in std_logic;
             ch_data_i   : in std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES*NUM_PA_CHANNELS -1 downto 0);
             ch_data_o   : out std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES*NUM_PA_CHANNELS*INTERP_FACTOR -1 downto 0)
             );
@@ -80,7 +78,7 @@ begin
     end generate;
 
     -- do the upsampling
-    proc_upsample_by_hand:process(clk_data_i, rst_i, enable)
+    proc_upsample_by_hand:process(clk_data_i, rst_i, enable_i)
     begin
         for ch in 0 to 3 loop
             -- assign the real sample values
@@ -97,7 +95,7 @@ begin
 
         end loop;
 
-        if rising_edge(clk_data_i) and (enable='1')then
+        if rising_edge(clk_data_i) and (enable_i='1')then
             for  ch in 0 to 3 loop
                 for sam in 0 to NUM_SAMPLES*INTERP_FACTOR-1 loop
 

@@ -12,14 +12,17 @@ ghdl -a --std=08 rtl/handshake_sync.vhdl
 echo "compiliing beamforming"
 ghdl -a --std=08 rtl/beamforming.vhdl
 
-#echo "compiling power lut"
-#ghdl -a --std=08 power_lut_8.vhdl
+echo "compiliing upsampling"
+ghdl -a --std=08 rtl/upsampling.vhdl
 
-#echo "compiling power integration"
-#ghdl -a --std=08 power_integration.vhdl
+echo "compiling power lut"
+ghdl -a --std=08 rtl/power_lut_8.vhdl
 
-#echo "compiling power trigger"
-#ghdl -a --std=08 power_trigger.vhd
+echo "compiling power integration"
+ghdl -a --std=08 rtl/power_integration.vhdl
+
+echo "compiling power trigger"
+ghdl -a --std=08 rtl/power_trigger.vhd
 
 echo "compiling surface trigger"
 ghdl -a --std=08 rtl/simple_trigger.vhd

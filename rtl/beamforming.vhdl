@@ -5,14 +5,13 @@ use work.defs.all;
 
 entity beamforming is
     generic(
-            ENABLE_PHASED_TRIG : std_logic := '1';
             station_number_i : in std_logic_vector(7 downto 0)
             );
     
     port(
             rst_i : in std_logic:='0';
             clk_data_i : in	std_logic:='0'; --data clock
-            enable : in std_logic:='0';
+            enable_i : in std_logic:='0';
             ch_data_i : in std_logic_vector(NUM_PA_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):=(others=>'0');
             beam_data_o : out std_logic_vector(NUM_BEAMS*NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):=(others=>'0')
             );
@@ -76,9 +75,9 @@ constant beam_delays: antenna_delays :=
 
 begin
 
-    proc_pipeline_data: process(clk_data_i,enable)
+    proc_pipeline_data: process(clk_data_i,enable_i)
     begin
-            if rst_i = '1' or enable='0' then
+            if rst_i = '1' or enable_i='0' then
                 for ch in 0 to NUM_PA_CHANNELS-1 loop
                         for sam in 0 to interp_data_length-1 loop
                             interp_data(ch,sam) <= x"00";
@@ -100,7 +99,7 @@ begin
     end process;
 
     --do phasing to calculate the coherently summed waveforms
-    proc_phasing: process(clk_data_i,enable)
+    proc_phasing: process(clk_data_i,enable_i)
     begin
 
         for i in 0 to NUM_BEAMS-1 loop --loop over beams
@@ -117,11 +116,11 @@ begin
                                             +resize(interp_data(2,beam_delays(station_index,i,2)+(j)),10)
                                             +resize(interp_data(3,beam_delays(station_index,i,3)+(j)),10);
 
-                if rst_i ='1' or enable='0' then
+                if rst_i ='1' or enable_i='0' then
                     phased_beam_waves(i,j) <= x"00";
 
                 elsif rising_edge(clk_data_i) then 
-
+                    -- for the simple threshold it might make sense to leave these at 10 bits?
                     --saturate low and high for 8 bit LUT. max=2^(8-1)-1, min=-2^(8-1), might be able to go up in bit length with simple threshold instead of power
                     if((phased_beam_waves_buff(i,j))>127) then
                         phased_beam_waves(i,j)<=b"01111111";--saturate max
