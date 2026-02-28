@@ -429,6 +429,7 @@ begin
     proc_rd_event_control : process(rst_i, rd_clk_i)
     begin
         -- assign signals. lock should restrict only 1 bit of rd_events at a time
+        -- rd_events(0) is becoming a clock in synthesis???
         if rd_events(0) then
             data_o <= event_data(0);
             rd_pulse(0) <= rd_pulse_i;
@@ -451,6 +452,7 @@ begin
         elsif rising_edge(rd_clk_i) then
             if manual_events then
                 rd_events(0) <= '1'; -- only use first buffer so always point there
+                rd_events(1) <= '0';
             
             else
                 -- single event structure should take care of these control signals so we don't hit any weird behavior. tbd testing

@@ -414,7 +414,6 @@ begin
                 else
 
                     -- map event data out
-                    -- TODO: CDC sync all data here except waveforms
                     if unsigned(read_counter)=0 then
                         data_o <= x"0000" & event_run_number;
                     elsif unsigned(read_counter)=1 then
@@ -482,7 +481,9 @@ begin
     end process;
 
     -- everything here is going from fast clock to slow clock, but these are held for a long time
-    -- so only a ff sync is enough
+    -- after being latched on the write clock, and won't be read out for a while ( at least reading through regs, ~2 clocks on slow clock is enough)
+    -- so only a ff sync is enough, might want to manually write the syncs so the hierarchy doesn't get flooded with sync
+    -- blocks
     xRUN : for i in 0 to run_number'length-1 generate
         sync : signal_sync
         port map(

@@ -37,6 +37,7 @@ entity single_channel_ram is
         B_clk_i : in std_logic;
         B_en_i : in std_logic;
         B_addr_i : in std_logic_vector(ADDR_DEPTH-1 downto 0);
+
         B_valid_o : out std_logic;
         B_data_o : out std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0)
     );
@@ -56,12 +57,8 @@ begin
         end if;
     end process;
 
-    b_side : process(B_clk_i, rst_i) begin
-        if rst_i = '1' then
-            B_data_o <= (others=>'0');
-            B_valid_o <= '0';
-
-        elsif rising_edge(B_clk_i) then
+    b_side : process(B_clk_i) begin
+        if rising_edge(B_clk_i) then
             if B_en_i = '1' then
                 B_valid_o <= '1';
                 B_data_o <= mem_blk(to_integer(unsigned(B_addr_i)));

@@ -214,7 +214,7 @@ begin
             for i in 0 to NUM_CHANNELS-1 loop
                 wr_ens(i) <= '0';
                 internal_input_data(i) <= NULL_DATA;
-                wr_addrs(i) <= (others=>'0');
+                wr_addrs(i) <= (others=>'0'); -- tools complain about async reset of ram control signal
                 final_wr_addrs(i) <= (others=>'0');
             end loop;
             wr_finished_o <= '0';
@@ -287,7 +287,7 @@ begin
 
         -- CHANNEL SWITCHING POINTS TO THE NEW CHANNEL DATA BEFORE IT IS GRABBED, CAUSING DUPLICATE DATA, NEED TO WAIT FOR LAST CHANNEL SAMPLE
         -- BEFORE SWAPPING, DO HERE OR HIGH LEVEL?
-        if wr_finished_o then
+        if  rd_clk_wr_finished(1) then
             rd_ens <= (others=>'1');
             for i in 0 to NUM_CHANNELS-1 loop
                 --rd_ens(i) <= '0';
@@ -325,7 +325,7 @@ begin
         end if;
         
         /*
-         --clocked output data is not the way since it incurs a clock cycle of delay to move through modules
+         --clocked output data is not the way since it incurs a clock cycle of delay to move through modules. as long as the assigns above meet timing we don't need to do this
         if rst_i = '1' then
             rd_ens <= (others=>'0');
             internal_read_channel <= (others=>'0');

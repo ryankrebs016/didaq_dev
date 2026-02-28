@@ -64,7 +64,7 @@ begin
             count_wr_addrs <= (others=>'0');
             wr_finished_o <= '0';
             queue_trigger <= '0';
-            wr_en <= '0';
+            wr_en <= '0'; -- tool complains about async reset on ram control signal
             full_buffer_write <= '0';
             post_trigger_clks <= (others=>'0');
 

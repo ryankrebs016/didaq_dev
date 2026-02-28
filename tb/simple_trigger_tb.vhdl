@@ -14,15 +14,11 @@ architecture behave of simple_trigger_tb is
 -----------------------------------------------------------------------------
 -- Declare the Component Under Test
 -----------------------------------------------------------------------------
-
+/*
 component simple_trigger
 
     
     generic(
-            ENABLE_TRIG : std_logic := '1';
-            TRIGGER_PARAM_ADDRESS : std_logic_vector(7 downto 0) := x"00";
-            TRIGGER_MASK_ADDRESS : std_logic_vector(7 downto 0) := x"01";
-            TRIGGER_THRESHOLD_START_ADDRESS : std_logic_vector(7 downto 0) := x"02"
             );
     
     port(
@@ -37,7 +33,7 @@ component simple_trigger
             trig_metadata_o : out std_logic_vector(NUM_CHANNELS-1 downto 0) --triggering channels causing trig_o, synced to trig_o
             );
 end component;
-
+*/
 -----------------------------------------------------------------------------
 -- Testbench Internal Signals
 -----------------------------------------------------------------------------
@@ -49,8 +45,11 @@ signal enable: std_logic:='1';
 --type input_samples_t is unsigned(31 downto 0);
 signal thresholds:thresholds_t:=(others=>"01000000");
 signal registers: register_array_type:=(others=>(others=>'0'));
+signal trig_thresholds : std_logic_vector(8*NUM_CHANNELS-1 downto 0) := (others=>'0');
+signal servo_thresholds : std_logic_vector(8*NUM_CHANNELS-1 downto 0) := (others=>'0');
 
 signal ch_samples:std_logic_vector(NUM_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH-1 downto 0):=(others=>'0');
+signal data_valid : std_logic_vector(NUM_CHANNELS-1 downto 0) := (others=>'1');
 
 --signal ch0_samples:std_logic_vector(31 downto 0):=(others=>'0');
 --signal ch1_samples:std_logic_vector(31 downto 0):=(others=>'0');
@@ -66,19 +65,27 @@ signal is_enable:std_logic:='0';
 begin
     --registers(0)<=x"00020803" after 40 ns; --trigger params
     clock <= not clock after 2 ns; -- 4ns clock period
-    slow_clk <= not slow_clk after 8 ns; -- don't make it so long that it takes 100 ns to move thresholds into the trigger
+    slow_clk <= not slow_clk after 4 ns; -- don't make it so long that it takes 100 ns to move thresholds into the trigger
 
     -----------------------------------------------------------------------------
     -- Instantiate and Map UUT
     -----------------------------------------------------------------------------
 
-    simple_trigger_inst: simple_trigger
+    simple_trigger_inst: entity work.simple_trigger
     port map(
         rst_i               => '0',
-        clk_i               => slow_clk,
         clk_data_i          => clock,
-        registers_i         => registers,
         ch_data_i           => ch_samples,
+        ch_data_valid_i     => data_valid,
+
+        clk_reg_i           => slow_clk,
+        enable_i            => enable,
+        ch_mask_i           => x"000003",
+        vpp_mode_i          => '1',
+        coinc_window_i      => "01010",
+        num_coinc_i         => "00010",
+        trig_thresholds_i   => trig_thresholds,
+        servo_thresholds_i   => servo_thresholds,
 
 		trig_bits_o         => open,
         trig_o              => trig,
@@ -138,19 +145,12 @@ begin
             --read in thresholds and assign to regs
 
             readline(file_THRESHOLDS,v_ILINE);
-            for i in 0 to 11 loop
-                read(v_ILINE,thresholds_tmp(2*i));
+            for i in 0 to NUM_CHANNELS-1 loop
+                read(v_ILINE,thresholds_tmp(i));
                 read(v_ILINE, v_SPACE);
-                registers(2+i)(7 downto 0)<=thresholds_tmp(2*i);
+                trig_thresholds(8*(i+1) -1 downto 8*i)<=thresholds_tmp(i);
                 
-                read(v_ILINE,thresholds_tmp(2*i+1));
-                read(v_ILINE, v_SPACE);
-                registers(2+i)(23 downto 16)<=thresholds_tmp(2*i+1);
             end loop;
-
-            registers(0)<=x"00020803"; --trigger params
-            registers(1)<=x"00ffffff"; --channel mask
-            --registers(81)<=x"000000"; --threshold offset
 
             --read in samples in sets of 4
             while not endfile(file_INPUT) loop
@@ -257,20 +257,27 @@ begin
                 --write(v_OLINE,temp_sample,right,8);
                 --writeline(output,v_OLINE);
 
-                --write(v_OLINE,registers(3)(31 downto 0),right,32);
-                --writeline(output,v_OLINE);
+                write(v_OLINE,ch_samples(31 downto 0),right,32);
+                write(v_OLINE, v_SPACE);
+
+                write(v_OLINE,trig_thresholds(7 downto 0),right,8);
+                write(v_OLINE, v_SPACE);
+
+                --writeline(file_TRIGGERS,v_OLINE);
 
                 write(v_OLINE,trig,right,1);
-                writeline(output,v_OLINE);
+                write(v_OLINE, v_SPACE);
+
+                --writeline(file_TRIGGERS,v_OLINE);
 
                 write(v_OLINE,triggering_channels,right,24);
-                writeline(output,v_OLINE);
+                writeline(file_TRIGGERS,v_OLINE);
 
                 --write(v_OLINE,is_enable,right,1);
                 --writeline(output,v_OLINE);
                 --write output trigger state
-                write(v_OLINE,trig,right,1);
-                writeline(file_TRIGGERS, v_OLINE);
+                --write(v_OLINE,trig,right,1);
+                --writeline(file_TRIGGERS, v_OLINE);
 
 
             end loop;
