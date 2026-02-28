@@ -9,5 +9,5 @@ package defs is
 	constant SAMPLE_LENGTH : integer:=8;
 	constant NUM_SAMPLES : integer :=4;
 	constant NUM_EVENTS : integer := 2;
-	constant INTERP_FACTOR : interger := 2;
+	constant INTERP_FACTOR : integer := 2;
 end defs;

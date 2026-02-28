@@ -14,26 +14,7 @@ architecture behave of simple_trigger_tb is
 -----------------------------------------------------------------------------
 -- Declare the Component Under Test
 -----------------------------------------------------------------------------
-/*
-component simple_trigger
 
-    
-    generic(
-            );
-    
-    port(
-            rst_i			:	in		std_logic;
-            clk_i			:	in		std_logic; --register clock 
-            clk_data_i	    :	in		std_logic; --data clock
-            registers_i	    :	in		register_array_type;
-            ch_data_i	    : 	in		std_logic_vector(NUM_SAMPLES*NUM_CHANNELS*SAMPLE_LENGTH-1 downto 0);
-
-            trig_bits_o     : 	out	std_logic_vector(NUM_CHANNELS*2+2 -1 downto 0); --24 trig scaler, 24 servo scaler, total trig scaler, total servo scaler
-            trig_o          : 	out	std_logic; --trigger output
-            trig_metadata_o : out std_logic_vector(NUM_CHANNELS-1 downto 0) --triggering channels causing trig_o, synced to trig_o
-            );
-end component;
-*/
 -----------------------------------------------------------------------------
 -- Testbench Internal Signals
 -----------------------------------------------------------------------------
@@ -44,7 +25,6 @@ type thresholds_t is array(NUM_CHANNELS-1 downto 0) of std_logic_vector(7 downto
 signal enable: std_logic:='1';
 --type input_samples_t is unsigned(31 downto 0);
 signal thresholds:thresholds_t:=(others=>"01000000");
-signal registers: register_array_type:=(others=>(others=>'0'));
 signal trig_thresholds : std_logic_vector(8*NUM_CHANNELS-1 downto 0) := (others=>'0');
 signal servo_thresholds : std_logic_vector(8*NUM_CHANNELS-1 downto 0) := (others=>'0');
 
@@ -97,7 +77,6 @@ begin
 
 
     variable thresholds_tmp:thresholds_t;
-    variable registers_tmp: register_array_type;
 
     variable ch0_samples_tmp:std_logic_vector(31 downto 0);
     variable ch1_samples_tmp:std_logic_vector(31 downto 0);
