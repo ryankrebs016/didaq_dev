@@ -153,7 +153,7 @@ constant dummy_trigger : integer := 650;
 
 
 signal do_loop : std_logic := '1';
-constant header : string :=  "clk_counter wr_enable";
+constant header : string :=  "clk_counter wr_enable trigs trig_deadtime wr_pointer wr_busy wr_done event_ready rd_pointer rd_lock rd_done rd_enable rd_valid data_o";
 
 signal wr_pointer : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');
 signal wr_busy : std_logic_vector(NUM_EVENTS-1 downto 0) := (others=>'0');

@@ -373,12 +373,18 @@ begin
                         --wr_events(0) <= '0';
                         --wr_events(1) <= '0';
 
-                    -- if both were full and 0 just finished read and cleared and 1 is waiting to read
-                    elsif did_read(0)='1' and event_free(0)='1' and event_free(1)='0' then
+                    elsif event_free(0) = '1' and wr_done(1) = '1' then
                         wr_events(0) <= '1';
-                    -- if both were full and 1 just finished read and cleared and 0 is waiting for read
-                    elsif did_read(1)='1' and event_free(0)='0' and event_free(1)='1' then
+
+                    elsif event_free(1) = '1' and wr_done(0) = '1' then
                         wr_events(1) <= '1';
+
+                    -- if both were full and 0 just finished read and cleared and 1 is waiting to read
+                    --elsif did_read(0)='1' and event_free(0)='1' and event_free(1)='0' then
+                    --    wr_events(0) <= '1';
+                    -- if both were full and 1 just finished read and cleared and 0 is waiting for read
+                    --elsif did_read(1)='1' and event_free(0)='0' and event_free(1)='1' then
+                    --    wr_events(1) <= '1';
 
                     -- deadtime-less writing
                     -- if 0 is busy and get trigger, start event 1
