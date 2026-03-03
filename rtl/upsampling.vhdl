@@ -60,6 +60,8 @@ architecture rtl of upsampling is
     signal int_up: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_first: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_second: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_third: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_fourth: fir_temp_big:=(others=>(others=>x"0000"));
 
 begin
 
@@ -118,11 +120,13 @@ begin
                     int_up14(ch,sam)<=upsample_coeffs(36)*padded_sig(ch,36+sam);
 
                     --sum parts first stage
-                    int_up_first(ch,sam)<=int_up0(ch,sam)+int_up1(ch,sam)+int_up2(ch,sam)+int_up3(ch,sam)+int_up4(ch,sam)+int_up5(ch,sam)+int_up6(ch,sam);
-                    int_up_second(ch,sam)<=int_up7(ch,sam)+int_up8(ch,sam)+int_up9(ch,sam)+int_up10(ch,sam)+int_up11(ch,sam)+int_up12(ch,sam)+int_up13(ch,sam)+int_up14(ch,sam);
+                    int_up_first(ch,sam) <= int_up0(ch,sam)+int_up1(ch,sam)+int_up2(ch,sam)+int_up3(ch,sam);
+                    int_up_second(ch,sam) <= int_up4(ch,sam)+int_up5(ch,sam)+int_up6(ch,sam);
+                    int_up_third(ch,sam) <= int_up7(ch,sam)+int_up8(ch,sam)+int_up9(ch,sam)+int_up10(ch,sam);
+                    int_up_fourth(ch,sam) <= int_up11(ch,sam)+int_up12(ch,sam)+int_up13(ch,sam)+int_up14(ch,sam);
 
                     --sum parts second stage
-                    int_up(ch,sam)<=int_up_first(ch,sam)+int_up_second(ch,sam);
+                    int_up(ch,sam)<=int_up_first(ch,sam)+int_up_second(ch,sam)+int_up_third(ch,sam)+int_up_fourth(ch,sam);
 
                     --do division (bit shifting) with rounding
                     if unsigned(int_up(ch,sam)(5 downto 0)) > x"20" then
