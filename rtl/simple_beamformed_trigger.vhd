@@ -236,7 +236,10 @@ begin
 
     -- beamforming module
     xBeamforming: entity work.beamforming
-    generic map (station_number_i => station_number)
+    generic map (
+        station_number_i => station_number,
+        bf_INTERP_FACTOR => 1
+    )
     port map (
         rst_i => rst_i,
         clk_data_i => clk_data_i,

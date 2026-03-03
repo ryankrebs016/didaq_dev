@@ -7,10 +7,16 @@ for i in range(24):
     f.write(f"{thresholds[-i]:08b} ")
 f.close()
 
-thresholds=np.ones(12,dtype=int)*64
-#thresholds=np.array([200,200,200,200,1,1,1,1,1,1,1,1])
+thresholds=np.ones(12,dtype=int)*16
 
 f=open("data/input_pa_thresholds.txt","w")
 for i in range(12):
     f.write(f"{thresholds[-i]:08b} ")
+f.close()
+
+thresholds=np.ones(12,dtype=int)*10
+
+f=open("data/input_power_thresholds.txt","w")
+for i in range(12):
+    f.write(f"{thresholds[-i]:012b} ")
 f.close()

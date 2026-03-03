@@ -28,7 +28,7 @@ signal enable: std_logic:='1';
 type output_samples_t is array(15 downto 0) of std_logic_vector(31 downto 0);
 
 signal trig_thresholds : std_logic_vector(NUM_BEAMS*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
-signal servo_threhsolds : std_logic_vector(NUM_BEAMS*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
+signal servo_thresholds : std_logic_vector(NUM_BEAMS*SAMPLE_LENGTH-1 downto 0) := (others=>'0');
 
 signal ch0_samples:std_logic_vector(31 downto 0):=(others=>'0');
 signal ch1_samples:std_logic_vector(31 downto 0):=(others=>'0');
@@ -66,7 +66,7 @@ begin
         beam_mask_i             => x"fff",
         channel_mask_i          => x"f",
         trig_thresholds_i       => trig_thresholds,
-        servo_thresholds_i      => trig_thresholds,
+        servo_thresholds_i      => servo_thresholds,
 
         trig_bits_o             => open,
         trig_o                  => trig,
@@ -113,6 +113,7 @@ begin
                 read(v_ILINE,thresholds_tmp(i));
                 read(v_ILINE, v_SPACE);
                 trig_thresholds((i+1)*SAMPLE_LENGTH-1 downto i*SAMPLE_LENGTH)<=thresholds_tmp(i); --make to correct reg location
+                servo_thresholds((i+1)*SAMPLE_LENGTH-1 downto i*SAMPLE_LENGTH)<=thresholds_tmp(i); --make to correct reg location
                 
             end loop;
             --read in samples in sets of 4

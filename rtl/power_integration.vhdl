@@ -73,10 +73,10 @@ assign_beam_i: for bm in 0 to NUM_BEAMS-1 generate
 end generate;
 
 assing_power_o: for bm in 0 to NUM_BEAMS-1 generate
-    power_o(4*14*bm+14-1 downto 4*14*bm)<=std_logic_vector(avg_power0(bm));
-    power_o(4*14*bm+28-1 downto 4*14*bm+14)<=std_logic_vector(avg_power1(bm));
-    --power_o(4*14*bm+42-1 downto 4*14*bm+28)<=std_logic_vector(avg_power2(bm));
-    --power_o(4*14*bm+56-1 downto 4*14*bm+42)<=std_logic_vector(avg_power3(bm));
+    power_o(4*14*bm+14-1 downto 4*14*bm) <= std_logic_vector(avg_power0(bm));
+    power_o(4*14*bm+28-1 downto 4*14*bm+14) <= std_logic_vector(avg_power1(bm));
+    power_o(4*14*bm+42-1 downto 4*14*bm+28) <= (others=>'0'); -- std_logic_vector(avg_power2(bm));
+    power_o(4*14*bm+56-1 downto 4*14*bm+42) <= (others=>'0'); -- std_logic_vector(avg_power3(bm));
 end generate;
 
 

@@ -42,6 +42,6 @@ echo "compiling simple beamformed trigger tesbench"
 ghdl -a --std=08 tb/simple_beamformed_trigger_tb.vhdl
 ghdl -e --std=08 simple_beamformed_trigger_tb
 
-#echo "compiliing trigger testbench, scalers not implemented"
-#ghdl -a --std=08 trigger_tb.vhdl
-#ghdl -e --std=08 trigger_tb
+echo "compiliing trigger testbench, scalers not implemented"
+ghdl -a --std=08 tb/trigger_tb.vhdl
+ghdl -e --std=08 trigger_tb

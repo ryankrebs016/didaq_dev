@@ -480,7 +480,7 @@ begin
                     data_ready_rd_clk_o <= '0';
                 end if;
 
-                -- cdc this stuff, but once rd done goes high we unlock the readout pointer send the did read to the write side to reset the buffer
+                -- if an event is finished reading take away the pointer and lock. send did read to write side TODO CDC
                 if read_done(0) then
                     rd_events(0) <= '0';
                     did_read(0) <= '1';

@@ -42,9 +42,11 @@ port(
 
         -- output
         trig_bits_o : out	std_logic_vector(2*(NUM_BEAMS+1)-1 downto 0); --for scalers
-        phased_trig_o : out	std_logic; --trigger
-        phased_trig_metadata_o : out std_logic_vector(NUM_BEAMS-1 downto 0) --for triggering beams
-        --power_o: out std_logic_vector(22 downto 0) --test avg power for debugging located in metadata
+        trig_o : out	std_logic := '0'; --trigger
+        trig_metadata_o : out std_logic_vector(NUM_BEAMS-1 downto 0) := (others=>'0'); --for triggering beams
+
+        -- debug
+        power_o: out std_logic_vector(13 downto 0) --test avg power for debugging located in metadata
         );
 end power_trigger;
 
@@ -171,41 +173,40 @@ end component;
 begin
 
 --buffer samples into the phased trigger module
-proc_pipeline_data: process(clk_data_i,internal_phased_trig_en)
+proc_pipeline_data: process(clk_data_i, internal_phased_trig_en)
 begin
     if rst_i then
         streaming_data <= (others=>(others=>x"00"));
 
     elsif rising_edge(clk_data_i) then
+        if internal_phased_trig_en then
+            --pull new data in, if not in mask send 0's
+            for i in 0 to NUM_SAMPLES-1 loop
+                if internal_trigger_channel_mask(0)='1' then
+                    streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                else
+                    streaming_data(0,i)<=x"00";
+                end if;
 
-        --pull new data in, if not in mask send 0's
-        for i in 0 to NUM_SAMPLES-1 loop
-            if internal_trigger_channel_mask(0)='1' and internal_phased_trig_en='1' then
-                streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
-            else
-                streaming_data(0,i)<=x"00";
-            end if;
+                if internal_trigger_channel_mask(1)='1' then
+                    streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                else
+                    streaming_data(1,i)<=x"00";
+                end if;
 
-            if internal_trigger_channel_mask(1)='1'  and internal_phased_trig_en='1' then
-                streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
-            else
-                streaming_data(1,i)<=x"00";
-            end if;
-
-            if internal_trigger_channel_mask(2)='1'  and internal_phased_trig_en='1' then
-                streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
-            else
-                streaming_data(2,i)<=x"00";
-            end if;
-            
-            if internal_trigger_channel_mask(3)='1'  and internal_phased_trig_en='1' then
-
-                streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
-            else
-                streaming_data(3,i)<=x"00";
-            end if;
-        end loop;
-
+                if internal_trigger_channel_mask(2)='1' then
+                    streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                else
+                    streaming_data(2,i)<=x"00";
+                end if;
+                
+                if internal_trigger_channel_mask(3)='1' then
+                    streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                else
+                    streaming_data(3,i)<=x"00";
+                end if;
+            end loop;
+        end if;
     end if;
 end process;
 
@@ -252,7 +253,10 @@ end generate;
 beaming_i<=upsampling_o;
 
 xBeamforming: entity work.beamforming
-generic map (station_number_i => station_number)
+generic map (
+    station_number_i => station_number,
+    bf_INTERP_FACTOR => INTERP_FACTOR
+    )
 port map (
     rst_i       => rst_i,
     clk_data_i  => clk_data_i,
@@ -270,7 +274,7 @@ port map (
     clk_data_i  => clk_data_i,
     enable_i    => internal_phased_trig_en,
     beam_data_i => power_integration_i,
-    power_o     =>  power_integration_o
+    power_o     => power_integration_o
 );
 
 --connect output of power
@@ -292,67 +296,71 @@ begin
         phased_servo_reg <= "00";
         phased_servo <= '0';  --the servo trigger
 
-        triggering_beam<= (others=>'0');
-        servoing_beam<= (others=>'0');
+        triggering_beam <= (others=>'0');
+        servoing_beam <= (others=>'0');
+        last_phased_trig_metadata <= (others=>'0');
         
     elsif rising_edge(clk_data_i) then
-        last_phased_trig_metadata <= phased_trig_metadata;
-        --loop over the beams and this is a big mess
-        for i in 0 to NUM_BEAMS-1 loop
+        if internal_phased_trig_en then
+            --loop over the beams and this is a big mess
+            for i in 0 to NUM_BEAMS-1 loop
 
-            --calculate if a beam is triggering or seroing
-            if avg_power0(i)>trig_beam_thresh(i) or avg_power1(i)>trig_beam_thresh(i) then
-                triggering_beam(i)<='1';
-                beam_trigger_reg(i)(0)<='1';
-                --latched_power_out(i)<=avg_power(i);
+                --calculate if a beam is triggering or seroing
+                if avg_power0(i)>trig_beam_thresh(i) or avg_power1(i)>trig_beam_thresh(i) then
+                    triggering_beam(i)<='1';
+                    beam_trigger_reg(i)(0)<='1';
+                    --latched_power_out(i)<=avg_power(i);
+                else
+                    triggering_beam(i)<='0';
+                    beam_trigger_reg(i)(0)<='0';
+                end if;
+
+                beam_trigger_reg(i)(1)<=beam_trigger_reg(i)(0);
+                if avg_power0(i)>servo_beam_thresh(i) or avg_power1(i)>servo_beam_thresh(i) then
+                    servoing_beam(i)<='1';
+                    beam_servo_reg(i)(0)<='1';
+                else
+                    servoing_beam(i)<='0';
+                    beam_servo_reg(i)(0)<='0';
+                end if;
+                beam_servo_reg(i)(1)<=beam_servo_reg(i)(0);
+
+            end loop;
+
+            last_phased_trig_metadata <= triggering_beam;
+            power_o <= std_logic_vector(avg_power0(11));
+            --this is the core of figuring out if a trigger needs to happen
+            if (to_integer(unsigned(triggering_beam AND internal_trigger_beam_mask))>0) then
+                phased_trigger_reg(0)<='1';
+                --power_o(num_power_bits-1 downto 0)<=std_logic_vector(latched_power_out(0)(num_power_bits-1 downto 0));
+                phased_trig_metadata <= triggering_beam AND internal_trigger_beam_mask; --latches on a trigger
             else
-                triggering_beam(i)<='0';
-                beam_trigger_reg(i)(0)<='0';
+                phased_trigger_reg(0)<='0';
+            end if;
+            if (to_integer(unsigned(servoing_beam AND internal_trigger_beam_mask))>0) then
+                phased_servo_reg(0)<='1';
+            else
+                phased_servo_reg(0)<='0';
             end if;
 
-            beam_trigger_reg(i)(1)<=beam_trigger_reg(i)(0);
-            if avg_power0(i)>servo_beam_thresh(i) or avg_power1(i)>servo_beam_thresh(i) then
-                servoing_beam(i)<='1';
-                beam_servo_reg(i)(0)<='1';
+            phased_trigger_reg(1)<=phased_trigger_reg(0);
+            phased_servo_reg(1)<=phased_servo_reg(0);
+
+            if phased_trigger_reg="01" then
+                phased_trigger<='1';
+                trig_o <= '1';
+                trig_metadata_o <= last_phased_trig_metadata;
             else
-                servoing_beam(i)<='0';
-                beam_servo_reg(i)(0)<='0';
+                phased_trigger<='0';
+                trig_o <= '0';
+
             end if;
-            beam_servo_reg(i)(1)<=beam_servo_reg(i)(0);
-
-        end loop;
-
-        --this is the core of figuring out if a trigger needs to happen
-        if (to_integer(unsigned(triggering_beam AND internal_trigger_beam_mask))>0) and (internal_phased_trig_en='1') then
-            phased_trigger_reg(0)<='1';
-            --power_o(num_power_bits-1 downto 0)<=std_logic_vector(latched_power_out(0)(num_power_bits-1 downto 0));
-            phased_trig_metadata<=triggering_beam AND internal_trigger_beam_mask; --latches on a trigger
-        else
-            phased_trigger_reg(0)<='0';
-        end if;
-        if (to_integer(unsigned(servoing_beam AND internal_trigger_beam_mask))>0) and (internal_phased_trig_en='1') then
-            phased_servo_reg(0)<='1';
-        else
-            phased_servo_reg(0)<='0';
-        end if;
-
-        phased_trigger_reg(1)<=phased_trigger_reg(0);
-        phased_servo_reg(1)<=phased_servo_reg(0);
-
-        if phased_trigger_reg="01" then
-            phased_trigger<='1';
-            phased_trig_o <= '1';
-            phased_trig_metadata_o <= last_phased_trig_metadata;
-        else
-            phased_trigger<='0';
-            phased_trig_o <= '0';
-
-        end if;
-        
-        if phased_servo_reg="01" then
-            phased_servo<='1';
-        else
-            phased_servo<='0';
+            
+            if phased_servo_reg="01" then
+                phased_servo<='1';
+            else
+                phased_servo<='0';
+            end if;
         end if;
     end if;
 end process;
