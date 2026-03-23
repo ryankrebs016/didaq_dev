@@ -26,11 +26,12 @@ port(
         rst_i :	in std_logic;
 
         -- adc data
-        clk_data_i:	in std_logic; --data clock
-        ch0_data_i : in	std_logic_vector(31 downto 0);
-        ch1_data_i : in	std_logic_vector(31 downto 0);
-        ch2_data_i : in	std_logic_vector(31 downto 0);
-        ch3_data_i : in	std_logic_vector(31 downto 0);
+        clk_data_i      : in std_logic; --data clock
+        ch0_data_i      : in	std_logic_vector(31 downto 0);
+        ch1_data_i      : in	std_logic_vector(31 downto 0);
+        ch2_data_i      : in	std_logic_vector(31 downto 0);
+        ch3_data_i      : in	std_logic_vector(31 downto 0);
+        data_valid_i    : in std_logic_vector(3 downto 0);
 
         -- register things
         clk_reg_i           : in std_logic := '0'; --register clock 
@@ -182,25 +183,25 @@ begin
         if internal_phased_trig_en then
             --pull new data in, if not in mask send 0's
             for i in 0 to NUM_SAMPLES-1 loop
-                if internal_trigger_channel_mask(0)='1' then
+                if internal_trigger_channel_mask(0)='1' and data_valid_i(0)='1' then
                     streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
                 else
                     streaming_data(0,i)<=x"00";
                 end if;
 
-                if internal_trigger_channel_mask(1)='1' then
+                if internal_trigger_channel_mask(1)='1' and data_valid_i(1)='1' then
                     streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
                 else
                     streaming_data(1,i)<=x"00";
                 end if;
 
-                if internal_trigger_channel_mask(2)='1' then
+                if internal_trigger_channel_mask(2)='1' and data_valid_i(2)='1' then
                     streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
                 else
                     streaming_data(2,i)<=x"00";
                 end if;
                 
-                if internal_trigger_channel_mask(3)='1' then
+                if internal_trigger_channel_mask(3)='1' and data_valid_i(3)='1' then
                     streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
                 else
                     streaming_data(3,i)<=x"00";
