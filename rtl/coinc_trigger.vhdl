@@ -3,33 +3,23 @@
 --    --Dept. of Physics--
 --
 -- PROJECT:      DiDAQ 24 Channel Board
--- FILE:         simple_trigger.vhd
+-- FILE:         coinc_trigger.vhdl
 -- AUTHOR:       Ryan Krebs
 -- EMAIL         rjk5416@psu.edu
--- DATE:         1/2026
+-- DATE:         3/22/2026
 --
 -- DESCRIPTION:  coincidence-based high (and/or) low trigger on 24 maskable channels for two separate triggers (masks).
 --				 Adapted from Eric Oberla in the FLOWER firmware
 --
 ---------------------------------------------------------------------------------
 
-REWRITE THIS TO USE A COMMON SET OF THRESHOLDS AND THEN APPLY THE CHANNEL MASKS AFTER THE THRESHOLD AND COINCIDENCE WINDOW WAS BEEN APPLIED
 library IEEE;
 use ieee.std_logic_1164.all;
---use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
 
 use work.defs.all;
 
-entity simple_trigger is
-generic(
-		-- placeholder to be filled with project level constants
-		NUM_CHANNELS : integer := 24;
-		NUM_SAMPLES : integer := 4;
-		SAMPLE_LENGTH : integer:= 8;
-
-		);
-
+entity coinc_trigger_24_ch is
 port(
 		rst_i			: in std_logic := '1'; --global reset on start up
 		clk_data_i		: in std_logic; -- data clock
@@ -57,13 +47,13 @@ port(
 		trig_1_o			: out	std_logic := '0'; --trigger output
 		trig_1_metadata_o	: out std_logic_vector(NUM_CHANNELS-1 downto 0):= (others=>'0') --triggering channels causing trig_1_o, same time as trig_1_o
 		);
-end simple_trigger;
+end coinc_trigger_24_ch;
 
-architecture rtl of simple_trigger is
+architecture rtl of coinc_trigger_24_ch is
 
 	signal internal_trig_en : std_logic := '0'; --enable this trigger block from sw
-	signal internal_trig_0_en : std_logic := '0'; --enable this trigger block from sw
-	signal internal_trig_1_en : std_logic := '0'; --enable this trigger block from sw
+	signal trig_0_internal_trig_en : std_logic := '0'; --enable this trigger block from sw
+	signal trig_1_internal_trig_en : std_logic := '0'; --enable this trigger block from sw
 
 	signal coinc_require_int : unsigned(4 downto 0) := "00010"; --num of channels needed in coincidence
 	signal coinc_window_int	: std_logic_vector(4 downto 0) := "01000"; --//num of clk_data_i periods
@@ -131,9 +121,9 @@ begin
 	proc_enable : process(clk_data_i)
 	begin
 		if rst_i = '1' then
-			internal_trig_enable <= '0';
-		elsif rising_edge(clk_data_i)
-			internal_trig_enable <= trig_0_internal_trig_enable or trig_1_internal_trig_enable;
+			internal_trig_en <= '0';
+		elsif rising_edge(clk_data_i) then
+			internal_trig_en <= trig_0_internal_trig_en or trig_1_internal_trig_en;
 		end if;
 	end process;
 
@@ -320,26 +310,26 @@ begin
 			triggering_channels_past_past <= triggering_channels_past;
 
 			-- now find multi-channel coincidence for trig 0
-			if unsigned(triggering_channels and trig_0_channel_mask) >= coinc_require_int and internal_trig_0_enable='1' then
+			if unsigned(triggering_channels and trig_0_channel_mask) >= coinc_require_int and trig_0_internal_trig_en='1' then
 				trig_0_coincidence_trigger_reg(0) <= '1';
 			else
 				trig_0_coincidence_trigger_reg(0) <= '0';
 			end if;
 			
-			if unsigned(servoing_channels and trig_0_channel_mask) >= coinc_require_int and internal_trig_0_enable='1' then
+			if unsigned(servoing_channels and trig_0_channel_mask) >= coinc_require_int and trig_0_internal_trig_en='1' then
 				trig_0_coincidence_servo_reg(0) <= '1';
 			else
 				trig_0_coincidence_servo_reg(0) <= '0';
 			end if;
 
 			-- now find multi-channel coincidence for trig 1
-			if unsigned(triggering_channels and trig_1_channel_mask) >= coinc_require_int  and internal_trig_1_enable='1'  then
+			if unsigned(triggering_channels and trig_1_channel_mask) >= coinc_require_int  and trig_1_internal_trig_en='1'  then
 				trig_1_coincidence_trigger_reg(0) <= '1';
 			else
 				trig_1_coincidence_trigger_reg(0) <= '0';
 			end if;
 			
-			if unsigned(servoing_channels and trig_1_channel_mask) >= coinc_require_int  and internal_trig_1_enable='1' then
+			if unsigned(servoing_channels and trig_1_channel_mask) >= coinc_require_int  and trig_1_internal_trig_en='1' then
 				trig_1_coincidence_servo_reg(0) <= '1';
 			else
 				trig_1_coincidence_servo_reg(0) <= '0';
@@ -357,7 +347,7 @@ begin
 			-- trig 0
 			if trig_0_coincidence_trigger_reg = "01" then
 				trig_0_coincidence_trigger <= '1';
-				trig_0_trig_metadata_o <= triggering_channels_past and trig_0_channel_mask;
+				trig_0_metadata_o <= triggering_channels_past and trig_0_channel_mask;
 			else
 				trig_0_coincidence_trigger <= '0';
 			end if;
@@ -371,7 +361,7 @@ begin
 			-- trig 1
 			if trig_1_coincidence_trigger_reg = "01" then
 				trig_1_coincidence_trigger <= '1';
-				trig_1_trig_metadata_o <= triggering_channels_past and trig_1_channel_mask;
+				trig_1_metadata_o <= triggering_channels_past and trig_1_channel_mask;
 			else
 				trig_1_coincidence_trigger <= '0';
 			end if;
@@ -396,7 +386,7 @@ begin
 		xTRIGSYNC : flag_sync
 		port map(
 			clkA 		=> clk_data_i,
-			clkB		=> clk_i,
+			clkB		=> clk_reg_i,
 			in_clkA		=> trig_array_for_scalers(i),
 			busy_clkA	=> open,
 			out_clkB	=> trig_bits_o(i));
@@ -405,19 +395,19 @@ begin
 
 	-- sync some software commands to the data clock.
 	-- these should be set before enable starts and held for the duration of a run. ie don't care about bus sync
-	xTRIGENABLESYNC : signal_sync
+	xTRIGENABLESYNC_0 : signal_sync
 	port map(
 		clkA			=> clk_reg_i,
 		clkB			=> clk_data_i,
 		SignalIn_clkA	=> trig_0_enable_i,
-		SignalOut_clkB	=> internal_trig_0_en);
+		SignalOut_clkB	=> trig_0_internal_trig_en);
 
-	xTRIGENABLESYNC : signal_sync
+	xTRIGENABLESYNC_1 : signal_sync
 	port map(
 		clkA			=> clk_reg_i,
 		clkB			=> clk_data_i,
 		SignalIn_clkA	=> trig_1_enable_i,
-		SignalOut_clkB	=> internal_trig_1_en);
+		SignalOut_clkB	=> trig_1_internal_trig_en);
 
 	xCOINCREQ : for i in 0 to 4 generate
 		xCOINCREQSYNC : signal_sync
@@ -462,7 +452,7 @@ begin
 			SignalOut_clkB	=> trig_1_channel_mask(i));
 	end generate;
 
-	/*
+
 	-- sync threshold buses. these do change during run time and 'could' have timing issues between bits causing false triggers
 	-- use handshake syncs to sync the full bus to be safer
 	trig_threshold_sync : for i in 0 to NUM_CHANNELS-1 generate
@@ -492,7 +482,7 @@ begin
 				clk_b_data => servo_threshold_int(i)
 			);
 	end generate;
-	*/
+
 	
 	TRIG_THRESHOLDS : for ch in 0 to NUM_CHANNELS-1 generate
 		INDIV_TRIG_BITS : for i in 0 to 7 generate
