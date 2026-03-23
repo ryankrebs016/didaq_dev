@@ -173,330 +173,329 @@ end component;
 
 begin
 
---buffer samples into the phased trigger module
-proc_pipeline_data: process(clk_data_i, internal_phased_trig_en)
-begin
-    if rst_i then
-        streaming_data <= (others=>(others=>x"00"));
+    --buffer samples into the phased trigger module
+    proc_pipeline_data: process(clk_data_i, internal_phased_trig_en)
+    begin
+        if rst_i then
+            streaming_data <= (others=>(others=>x"00"));
 
-    elsif rising_edge(clk_data_i) then
-        if internal_phased_trig_en then
-            --pull new data in, if not in mask send 0's
-            for i in 0 to NUM_SAMPLES-1 loop
-                if internal_trigger_channel_mask(0)='1' and data_valid_i(0)='1' then
-                    streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+        elsif rising_edge(clk_data_i) then
+            if internal_phased_trig_en then
+                --pull new data in, if not in mask send 0's
+                for i in 0 to NUM_SAMPLES-1 loop
+                    if internal_trigger_channel_mask(0)='1' and data_valid_i(0)='1' then
+                        streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                    else
+                        streaming_data(0,i)<=x"00";
+                    end if;
+
+                    if internal_trigger_channel_mask(1)='1' and data_valid_i(1)='1' then
+                        streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                    else
+                        streaming_data(1,i)<=x"00";
+                    end if;
+
+                    if internal_trigger_channel_mask(2)='1' and data_valid_i(2)='1' then
+                        streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                    else
+                        streaming_data(2,i)<=x"00";
+                    end if;
+                    
+                    if internal_trigger_channel_mask(3)='1' and data_valid_i(3)='1' then
+                        streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                    else
+                        streaming_data(3,i)<=x"00";
+                    end if;
+                end loop;
+            end if;
+        end if;
+    end process;
+
+
+
+    --uncomment for dedisperion
+    /*
+    -- connect streaming data to dedispersion
+    assign_upsampling_io: for ch in 0 to 3 generate
+        assign_sams_i: for i in 0 to 3 generate
+            dedispersion_i(ch*8*4+8*(i+1)-1 downto ch*8*4+8*i)<=std_logic_vector(streaming_data(ch,i));
+        end generate;
+    end generate;
+    --
+    xDedispersion : entity work.dedispersion
+    port map (
+        rst_i       => rst_i,
+        clk_data_i  => clk_data_i,
+        enable      => internal_phased_trig_en,
+        ch_data_i   => dedispersion_i,
+        ch_data_o   => dedispersion_o
+    );
+    --connect dedispersion output to upsampling input
+    upsampling_i<=dedispersion_o;
+    */
+
+    xUpsampling : entity work.upsampling
+    port map (
+        rst_i       => rst_i,
+        clk_data_i  => clk_data_i,
+        enable_i    => internal_phased_trig_en,
+        ch_data_i   => upsampling_i,
+        ch_data_o   => upsampling_o
+    );
+
+    --comment these generates if using dedispersion
+    assign_upsampling_io: for ch in 0 to 3 generate
+        assign_sams_i: for i in 0 to 3 generate
+            upsampling_i(ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*(i+1)-1 downto ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*i)<=std_logic_vector(streaming_data(ch,i));
+        end generate;
+    end generate;
+
+    --connect upsampling to beamforming
+    beaming_i<=upsampling_o;
+
+    xBeamforming: entity work.beamforming
+    generic map (
+        station_number_i => station_number,
+        bf_INTERP_FACTOR => INTERP_FACTOR
+        )
+    port map (
+        rst_i       => rst_i,
+        clk_data_i  => clk_data_i,
+        enable_i    => internal_phased_trig_en,
+        ch_data_i   => beaming_i,
+        beam_data_o => beaming_o
+    );
+
+    --connect beamforming output to power integration
+    power_integration_i<=beaming_o;
+
+    xPower: entity work.power_integration
+    port map (
+        rst_i       => rst_i,
+        clk_data_i  => clk_data_i,
+        enable_i    => internal_phased_trig_en,
+        beam_data_i => power_integration_i,
+        power_o     => power_integration_o
+    );
+
+    --connect output of power
+    assing_power_o: for bm in 0 to NUM_BEAMS-1 generate
+
+        avg_power0(bm)<=unsigned(power_integration_o(4*14*bm+14-1 downto 4*14*bm));
+        avg_power1(bm)<=unsigned(power_integration_o(4*14*bm+28-1 downto 4*14*bm+14));
+        
+    end generate;
+
+
+    --compare calculated powers and compare to masks and thresholds for the actual trigger
+    proc_get_triggering_beams : process(clk_data_i,rst_i)
+    begin
+        if rst_i = '1' then
+            phased_trigger_reg <= "00";
+            phased_trigger <= '0'; -- the trigger
+
+            phased_servo_reg <= "00";
+            phased_servo <= '0';  --the servo trigger
+
+            triggering_beam <= (others=>'0');
+            servoing_beam <= (others=>'0');
+            last_phased_trig_metadata <= (others=>'0');
+            
+        elsif rising_edge(clk_data_i) then
+            if internal_phased_trig_en then
+                --loop over the beams and this is a big mess
+                for i in 0 to NUM_BEAMS-1 loop
+
+                    --calculate if a beam is triggering or seroing
+                    if avg_power0(i)>trig_beam_thresh(i) or avg_power1(i)>trig_beam_thresh(i) then
+                        triggering_beam(i)<='1';
+                        beam_trigger_reg(i)(0)<='1';
+                        --latched_power_out(i)<=avg_power(i);
+                    else
+                        triggering_beam(i)<='0';
+                        beam_trigger_reg(i)(0)<='0';
+                    end if;
+
+                    beam_trigger_reg(i)(1)<=beam_trigger_reg(i)(0);
+                    if avg_power0(i)>servo_beam_thresh(i) or avg_power1(i)>servo_beam_thresh(i) then
+                        servoing_beam(i)<='1';
+                        beam_servo_reg(i)(0)<='1';
+                    else
+                        servoing_beam(i)<='0';
+                        beam_servo_reg(i)(0)<='0';
+                    end if;
+                    beam_servo_reg(i)(1)<=beam_servo_reg(i)(0);
+
+                end loop;
+
+                last_phased_trig_metadata <= triggering_beam;
+                power_o <= std_logic_vector(avg_power0(11));
+                --this is the core of figuring out if a trigger needs to happen
+                if (to_integer(unsigned(triggering_beam AND internal_trigger_beam_mask))>0) then
+                    phased_trigger_reg(0)<='1';
+                    --power_o(num_power_bits-1 downto 0)<=std_logic_vector(latched_power_out(0)(num_power_bits-1 downto 0));
+                    phased_trig_metadata <= triggering_beam AND internal_trigger_beam_mask; --latches on a trigger
                 else
-                    streaming_data(0,i)<=x"00";
+                    phased_trigger_reg(0)<='0';
+                end if;
+                if (to_integer(unsigned(servoing_beam AND internal_trigger_beam_mask))>0) then
+                    phased_servo_reg(0)<='1';
+                else
+                    phased_servo_reg(0)<='0';
                 end if;
 
-                if internal_trigger_channel_mask(1)='1' and data_valid_i(1)='1' then
-                    streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
-                else
-                    streaming_data(1,i)<=x"00";
-                end if;
+                phased_trigger_reg(1)<=phased_trigger_reg(0);
+                phased_servo_reg(1)<=phased_servo_reg(0);
 
-                if internal_trigger_channel_mask(2)='1' and data_valid_i(2)='1' then
-                    streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                if phased_trigger_reg="01" then
+                    phased_trigger<='1';
+                    trig_o <= '1';
+                    trig_metadata_o <= last_phased_trig_metadata;
                 else
-                    streaming_data(2,i)<=x"00";
+                    phased_trigger<='0';
+                    trig_o <= '0';
+
                 end if;
                 
-                if internal_trigger_channel_mask(3)='1' and data_valid_i(3)='1' then
-                    streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                if phased_servo_reg="01" then
+                    phased_servo<='1';
                 else
-                    streaming_data(3,i)<=x"00";
+                    phased_servo<='0';
                 end if;
-            end loop;
+            end if;
         end if;
-    end if;
-end process;
+    end process;
 
+    -------------------------------------------------------------------------------------------------------------------------------
+    -------------------------------------------------------------------------------------------------------------------------------
 
+    --//sync some software commands from the slow reg clock to the data clock
 
---uncomment for dedisperion
-/*
--- connect streaming data to dedispersion
-assign_upsampling_io: for ch in 0 to 3 generate
-    assign_sams_i: for i in 0 to 3 generate
-        dedispersion_i(ch*8*4+8*(i+1)-1 downto ch*8*4+8*i)<=std_logic_vector(streaming_data(ch,i));
-    end generate;
-end generate;
---
-xDedispersion : entity work.dedispersion
-port map (
-    rst_i       => rst_i,
-    clk_data_i  => clk_data_i,
-    enable      => internal_phased_trig_en,
-    ch_data_i   => dedispersion_i,
-    ch_data_o   => dedispersion_o
-);
---connect dedispersion output to upsampling input
-upsampling_i<=dedispersion_o;
-*/
-
-xUpsampling : entity work.upsampling
-port map (
-    rst_i       => rst_i,
-    clk_data_i  => clk_data_i,
-    enable_i    => internal_phased_trig_en,
-    ch_data_i   => upsampling_i,
-    ch_data_o   => upsampling_o
-);
-
---comment these generates if using dedispersion
-assign_upsampling_io: for ch in 0 to 3 generate
-    assign_sams_i: for i in 0 to 3 generate
-        upsampling_i(ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*(i+1)-1 downto ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*i)<=std_logic_vector(streaming_data(ch,i));
-    end generate;
-end generate;
-
---connect upsampling to beamforming
-beaming_i<=upsampling_o;
-
-xBeamforming: entity work.beamforming
-generic map (
-    station_number_i => station_number,
-    bf_INTERP_FACTOR => INTERP_FACTOR
-    )
-port map (
-    rst_i       => rst_i,
-    clk_data_i  => clk_data_i,
-    enable_i    => internal_phased_trig_en,
-    ch_data_i   => beaming_i,
-    beam_data_o => beaming_o
-);
-
---connect beamforming output to power integration
-power_integration_i<=beaming_o;
-
-xPower: entity work.power_integration
-port map (
-    rst_i       => rst_i,
-    clk_data_i  => clk_data_i,
-    enable_i    => internal_phased_trig_en,
-    beam_data_i => power_integration_i,
-    power_o     => power_integration_o
-);
-
---connect output of power
-assing_power_o: for bm in 0 to NUM_BEAMS-1 generate
-
-    avg_power0(bm)<=unsigned(power_integration_o(4*14*bm+14-1 downto 4*14*bm));
-    avg_power1(bm)<=unsigned(power_integration_o(4*14*bm+28-1 downto 4*14*bm+14));
-    
-end generate;
-
-
---compare calculated powers and compare to masks and thresholds for the actual trigger
-proc_get_triggering_beams : process(clk_data_i,rst_i)
-begin
-    if rst_i = '1' then
-        phased_trigger_reg <= "00";
-        phased_trigger <= '0'; -- the trigger
-
-        phased_servo_reg <= "00";
-        phased_servo <= '0';  --the servo trigger
-
-        triggering_beam <= (others=>'0');
-        servoing_beam <= (others=>'0');
-        last_phased_trig_metadata <= (others=>'0');
+    --enable for the entire trigger block to start running (consuming power)
+    xTRIGENABLESYNC : signal_sync --phased trig enable bit
+        port map(
+        clkA			=> clk_reg_i,
+        clkB			=> clk_data_i,
+        SignalIn_clkA	=> enable_i, --overall phased trig enable bit
+        SignalOut_clkB	=> internal_phased_trig_en);
         
-    elsif rising_edge(clk_data_i) then
-        if internal_phased_trig_en then
-            --loop over the beams and this is a big mess
+        
+    --sync the trigger thresholds to clk_data_i from slow reg clock
+    TRIG_THRESHOLDS : for bm in 0 to NUM_BEAMS-1 generate
+        INDIV_TRIG_BITS : for i in 0 to input_power_thresh_bits-1 generate
+            xTRIGTHRESHSYNC : signal_sync
+            port map(
+            clkA			=> clk_reg_i,
+            clkB			=> clk_data_i,
+            SignalIn_clkA	=> trig_thresholds_i(bm*input_power_thresh_bits+i), --threshold from software
+            SignalOut_clkB	=> input_trig_thresh(bm)(i));
+        end generate;
+    end generate;
+
+
+    --sync the servo thresholds to clk_data_i from slow reg clock
+    SERVO_THRESHOLDS : for bm in 0 to NUM_BEAMS-1 generate
+        INDIV_SERVO_BITS : for i in 0 to input_power_thresh_bits-1 generate
+            xSERVOTHRESHSYNC : signal_sync
+            port map(
+            clkA			=> clk_reg_i,
+            clkB			=> clk_data_i,
+            SignalIn_clkA	=> servo_thresholds_i(bm*input_power_thresh_bits+i), --threshold from software
+            SignalOut_clkB	=> input_servo_thresh(bm)(i));
+        end generate;
+    end generate;
+
+
+    --sync the threhsold offset (like a prescaler) to clk_data_i from slow reg clock
+    THRESH_OFFSET: for i in 0 to NUM_BEAMS-1 generate
+        xTHRESHOFFSETSYNC : signal_sync
+            port map(
+            clkA => clk_reg_i,   
+            clkB => clk_data_i,
+            SignalIn_clkA => '0', --phased threshold offset
+            SignalOut_clkB => threshold_offset(i));
+    end generate;
+
+
+    --process 12 bit input thresholds with some threshold offset (defined in software) if needed (likely not needed)
+    proc_threshold_set:process(clk_data_i)
+    begin
+    if rising_edge(clk_data_i) then
             for i in 0 to NUM_BEAMS-1 loop
-
-                --calculate if a beam is triggering or seroing
-                if avg_power0(i)>trig_beam_thresh(i) or avg_power1(i)>trig_beam_thresh(i) then
-                    triggering_beam(i)<='1';
-                    beam_trigger_reg(i)(0)<='1';
-                    --latched_power_out(i)<=avg_power(i);
-                else
-                    triggering_beam(i)<='0';
-                    beam_trigger_reg(i)(0)<='0';
-                end if;
-
-                beam_trigger_reg(i)(1)<=beam_trigger_reg(i)(0);
-                if avg_power0(i)>servo_beam_thresh(i) or avg_power1(i)>servo_beam_thresh(i) then
-                    servoing_beam(i)<='1';
-                    beam_servo_reg(i)(0)<='1';
-                else
-                    servoing_beam(i)<='0';
-                    beam_servo_reg(i)(0)<='0';
-                end if;
-                beam_servo_reg(i)(1)<=beam_servo_reg(i)(0);
-
+                trig_beam_thresh(i)<=resize(input_trig_thresh(i),14)+threshold_offset;
+                servo_beam_thresh(i)<=resize(input_servo_thresh(i),14)+threshold_offset;
             end loop;
-
-            last_phased_trig_metadata <= triggering_beam;
-            power_o <= std_logic_vector(avg_power0(11));
-            --this is the core of figuring out if a trigger needs to happen
-            if (to_integer(unsigned(triggering_beam AND internal_trigger_beam_mask))>0) then
-                phased_trigger_reg(0)<='1';
-                --power_o(num_power_bits-1 downto 0)<=std_logic_vector(latched_power_out(0)(num_power_bits-1 downto 0));
-                phased_trig_metadata <= triggering_beam AND internal_trigger_beam_mask; --latches on a trigger
-            else
-                phased_trigger_reg(0)<='0';
-            end if;
-            if (to_integer(unsigned(servoing_beam AND internal_trigger_beam_mask))>0) then
-                phased_servo_reg(0)<='1';
-            else
-                phased_servo_reg(0)<='0';
-            end if;
-
-            phased_trigger_reg(1)<=phased_trigger_reg(0);
-            phased_servo_reg(1)<=phased_servo_reg(0);
-
-            if phased_trigger_reg="01" then
-                phased_trigger<='1';
-                trig_o <= '1';
-                trig_metadata_o <= last_phased_trig_metadata;
-            else
-                phased_trigger<='0';
-                trig_o <= '0';
-
-            end if;
-            
-            if phased_servo_reg="01" then
-                phased_servo<='1';
-            else
-                phased_servo<='0';
-            end if;
         end if;
-    end if;
-end process;
+    end process;
 
--------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------
-
---//sync some software commands from the slow reg clock to the data clock
-
---enable for the entire trigger block to start running (consuming power)
-xTRIGENABLESYNC : signal_sync --phased trig enable bit
-    port map(
-    clkA			=> clk_reg_i,
-    clkB			=> clk_data_i,
-    SignalIn_clkA	=> enable_i, --overall phased trig enable bit
-    SignalOut_clkB	=> internal_phased_trig_en);
-    
-    
---sync the trigger thresholds to clk_data_i from slow reg clock
-TRIG_THRESHOLDS : for bm in 0 to NUM_BEAMS-1 generate
-    INDIV_TRIG_BITS : for i in 0 to input_power_thresh_bits-1 generate
-        xTRIGTHRESHSYNC : signal_sync
+    --sync the trigger beam mask to clk_data_i from slow reg clock
+    TRIGBEAMMASK : for bm in 0 to NUM_BEAMS-1 generate --beam masks. 1 == on
+        xTRIGBEAMMASKSYNC : signal_sync
         port map(
-        clkA			=> clk_reg_i,
-        clkB			=> clk_data_i,
-        SignalIn_clkA	=> trig_thresholds_i(bm*input_power_thresh_bits+i), --threshold from software
-        SignalOut_clkB	=> input_trig_thresh(bm)(i));
+        clkA	=> clk_reg_i,
+        clkB	=> clk_data_i,
+        SignalIn_clkA	=> beam_mask_i(bm), --trig channel mask
+        SignalOut_clkB	=> internal_trigger_beam_mask(bm));
     end generate;
-end generate;
 
-
---sync the servo thresholds to clk_data_i from slow reg clock
-SERVO_THRESHOLDS : for bm in 0 to NUM_BEAMS-1 generate
-    INDIV_SERVO_BITS : for i in 0 to input_power_thresh_bits-1 generate
-        xSERVOTHRESHSYNC : signal_sync
+    --sync the trigger beam mask to clk_data_i from slow reg clock
+    TRIGCHANNELMASK : for ch in 0 to NUM_PA_CHANNELS-1 generate --beam masks. 1 == on
+        xTRIGBEAMMASKSYNC : signal_sync
         port map(
-        clkA			=> clk_reg_i,
-        clkB			=> clk_data_i,
-        SignalIn_clkA	=> servo_thresholds_i(bm*input_power_thresh_bits+i), --threshold from software
-        SignalOut_clkB	=> input_servo_thresh(bm)(i));
+        clkA	=> clk_reg_i,
+        clkB	=> clk_data_i,
+        SignalIn_clkA	=> channel_mask_i(ch), --trig channel mask
+        SignalOut_clkB	=> internal_trigger_channel_mask(ch));
     end generate;
-end generate;
+
+    -------------------------------------------------------------------------------------------------------------------------------
+    -------------------------------------------------------------------------------------------------------------------------------
+
+    --send/sync things from the fast clk_data_i clock to the slow reg clock
 
 
---sync the threhsold offset (like a prescaler) to clk_data_i from slow reg clock
-THRESH_OFFSET: for i in 0 to NUM_BEAMS-1 generate
-    xTHRESHOFFSETSYNC : signal_sync
+
+    --phased trigger scaler, can use phased_trigger if we want to check 0->1 trigger
+    trigscaler: flag_sync
         port map(
-        clkA => clk_reg_i,   
-        clkB => clk_data_i,
-        SignalIn_clkA => '0', --phased threshold offset
-        SignalOut_clkB => threshold_offset(i));
-end generate;
+            clkA 		=> clk_data_i,
+            clkB		=> clk_reg_i,
+            in_clkA		=> phased_trigger_reg(0),
+            busy_clkA	=> open,
+            out_clkB	=> trig_bits_o(0));
+
+            
+    --beam trigger scalers
+    TrigToScalers	:	 for bm in 0 to NUM_BEAMS-1 generate 
+        xTRIGSYNC : flag_sync
+        port map(
+            clkA 		=> clk_data_i,
+            clkB		=> clk_reg_i,
+            in_clkA		=> triggering_beam(bm),-- and internal_trigger_beam_mask(i),
+            busy_clkA	=> open,
+            out_clkB	=> trig_bits_o(bm+1));
+    end generate TrigToScalers;
 
 
---process 12 bit input thresholds with some threshold offset (defined in software) if needed (likely not needed)
-proc_threshold_set:process(clk_data_i)
-begin
-   if rising_edge(clk_data_i) then
-        for i in 0 to NUM_BEAMS-1 loop
-            trig_beam_thresh(i)<=resize(input_trig_thresh(i),14)+threshold_offset;
-            servo_beam_thresh(i)<=resize(input_servo_thresh(i),14)+threshold_offset;
-        end loop;
-    end if;
-end process;
+    --phased servo scaler
+    servoscaler: flag_sync
+        port map(
+            clkA 		=> clk_data_i,
+            clkB		=> clk_reg_i,
+            in_clkA		=> phased_servo_reg(0),
+            busy_clkA	=> open,
+            out_clkB	=> trig_bits_o(NUM_BEAMS+1));
 
---sync the trigger beam mask to clk_data_i from slow reg clock
-TRIGBEAMMASK : for bm in 0 to NUM_BEAMS-1 generate --beam masks. 1 == on
-    xTRIGBEAMMASKSYNC : signal_sync
-    port map(
-    clkA	=> clk_reg_i,
-    clkB	=> clk_data_i,
-    SignalIn_clkA	=> beam_mask_i(bm), --trig channel mask
-    SignalOut_clkB	=> internal_trigger_beam_mask(bm));
-end generate;
+            
+    --beam servo scalers
+    ServoToScalers	:	 for bm in 0 to NUM_BEAMS-1 generate 
+        xSERVOSYNC : flag_sync
+        port map(
+            clkA 		=> clk_data_i,
+            clkB		=> clk_reg_i,
+            in_clkA		=> servoing_beam(bm),-- and internal_trigger_beam_mask(i),
+            busy_clkA	=> open,
+            out_clkB	=> trig_bits_o(bm+NUM_BEAMS+2));
+    end generate ServoToScalers;
 
---sync the trigger beam mask to clk_data_i from slow reg clock
-TRIGCHANNELMASK : for ch in 0 to NUM_PA_CHANNELS-1 generate --beam masks. 1 == on
-    xTRIGBEAMMASKSYNC : signal_sync
-    port map(
-    clkA	=> clk_reg_i,
-    clkB	=> clk_data_i,
-    SignalIn_clkA	=> channel_mask_i(ch), --trig channel mask
-    SignalOut_clkB	=> internal_trigger_channel_mask(ch));
-end generate;
-
--------------------------------------------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------------------------------------------
-
---send/sync things from the fast clk_data_i clock to the slow reg clock
-
-
-
-/* -- TODO for scalers
---phased trigger scaler
-trigscaler: flag_sync
-    port map(
-        clkA 		=> clk_data_i,
-        clkB		=> clk_i,
-        in_clkA		=> phased_trigger,
-        busy_clkA	=> open,
-        out_clkB	=> trig_bits_o(0));
-
-        
---beam trigger scalers
-TrigToScalers	:	 for bm in 0 to NUM_BEAMS-1 generate 
-    xTRIGSYNC : flag_sync
-    port map(
-        clkA 		=> clk_data_i,
-        clkB		=> clk_i,
-        in_clkA		=> triggering_beam(bm),-- and internal_trigger_beam_mask(i),
-        busy_clkA	=> open,
-        out_clkB	=> trig_bits_o(bm+1));
-end generate TrigToScalers;
-
-
---phased servo scaler
-servoscaler: flag_sync
-    port map(
-        clkA 		=> clk_data_i,
-        clkB		=> clk_i,
-        in_clkA		=> phased_servo,
-        busy_clkA	=> open,
-        out_clkB	=> trig_bits_o(NUM_BEAMS+1));
-
-        
---beam servo scalers
-ServoToScalers	:	 for bm in 0 to NUM_BEAMS-1 generate 
-    xSERVOSYNC : flag_sync
-    port map(
-        clkA 		=> clk_data_i,
-        clkB		=> clk_i,
-        in_clkA		=> servoing_beam(bm),-- and internal_trigger_beam_mask(i),
-        busy_clkA	=> open,
-        out_clkB	=> trig_bits_o(bm+NUM_BEAMS+2));
-end generate ServoToScalers;
-*/
 end rtl;

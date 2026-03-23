@@ -63,7 +63,7 @@ begin
             ch1_data_i  	        => ch1_samples, 
             ch2_data_i	            => ch2_samples, 
             ch3_data_i	            => ch3_samples,
-            data_valid_i            => "1111";
+            data_valid_i            => "1111",
 
             clk_reg_i               => slow_clk,
             enable_i                => enable,
