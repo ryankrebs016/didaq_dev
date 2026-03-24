@@ -87,7 +87,7 @@ architecture rtl of coinc_trigger_24_ch is
 	signal channel_trig_reg		: coincidence_array := (others=>(others=>'0')); --for coincidenc'ing
 	signal channel_servo_reg	: coincidence_array := (others=>(others=>'0')); --for coincidenc'ing
 
-	signal trig_array_for_scalers : std_logic_vector(NUM_CHANNELS*2+1 downto 0) := (others=>'0'); -- on clk_data, 1 for total trig, 24 for channel trig, and then servos
+	signal trig_array_for_scalers : std_logic_vector(NUM_CHANNELS*2+4-1 downto 0) := (others=>'0'); -- on clk_data, 1 for total trig, 24 for channel trig, and then servos
 
 	signal trig_0_coincidence_trigger_reg : std_logic_vector(1 downto 0) := (others=>'0');
 	signal trig_0_coincidence_trigger : std_logic :='0'; --actual trigger, one clk_data_i cycle
@@ -453,6 +453,7 @@ begin
 	end generate;
 
 
+	/*
 	-- sync threshold buses. these do change during run time and 'could' have timing issues between bits causing false triggers
 	-- use handshake syncs to sync the full bus to be safer
 	trig_threshold_sync : for i in 0 to NUM_CHANNELS-1 generate
@@ -482,6 +483,7 @@ begin
 				clk_b_data => servo_threshold_int(i)
 			);
 	end generate;
+	*/
 
 	
 	TRIG_THRESHOLDS : for ch in 0 to NUM_CHANNELS-1 generate
