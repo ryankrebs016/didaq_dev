@@ -10,4 +10,5 @@ package defs is
 	constant NUM_SAMPLES : integer :=4;
 	constant NUM_EVENTS : integer := 2;
 	constant INTERP_FACTOR : integer := 2;
+	constant STEP_SIZE : integer := 4;
 end defs;

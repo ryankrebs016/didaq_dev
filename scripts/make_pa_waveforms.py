@@ -9,10 +9,10 @@ ch_data = np.zeros((4,2048), dtype=int) + 128
 #ch3_data=np.zeros(1024,dtype=int)+128
 
 ch_data[0,80]=128+32
-ch_data[0,81]=128-32
+#ch_data[0,81]=128-32
 
-ch_data[1,80]=128+32
-ch_data[1,81]=128-32
+#ch_data[1,80]=128+32
+#ch_data[1,81]=128-32
 
 if False:
     ch0_data=np.loadtxt("data/ch0_test_trace.txt")+128
@@ -25,7 +25,7 @@ if False:
     ch2_data=np.pad(ch2_data,pad_width=(0,1024-len(ch2_data)),constant_values=128).astype(int)
     ch3_data=np.pad(ch3_data,pad_width=(0,1024-len(ch3_data)),constant_values=128).astype(int)
 
-
+np.savetxt("data/plot_input_pa_waveforms.txt", ch_data)
 print(len(ch_data))
 
 ch_cond=ch_data.reshape((4,512,4))

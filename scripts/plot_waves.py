@@ -13,69 +13,75 @@ def get_peak_average_power(trace,window=24):
             peak=avg_pow
     return peak/32
 
-input_data=np.loadtxt("data/plot_input_waveforms.txt")
+input_data=np.loadtxt("data/plot_input_pa_waveforms.txt")
 
 f=open("data/output_upsampled.txt")
-up_data=np.zeros((4,1024*4))
-for i in range(256):
+up_data=np.zeros((4,2048*2))
+for i in range(int(2048*2/32)):
     line=f.readline()
-    vals=(line.split(" "))[0:64]
+    vals=(line.split(" "))[0:32]
 
-    for j in range(64):
-        val=(int(vals[j],2)-128)
-        ch=int(np.trunc(j/16))
-        sam=16*i+(15-j % 16)
+    for j in range(32):
+        if "X" in vals[j]:
+            val=-40
+        else:
+            val=(int(vals[j],2)-128)
+        ch=int(np.trunc(j/8))
+        sam=8*i+(7-j % 8)
         up_data[ch][sam]=val
 
 f=open("data/output_beamformed.txt")
-beam_data=np.zeros((12,1024*4))
-for i in range(256):
+beam_data=np.zeros((12,2048*2))
+for i in range(int(2048*2/32)):
     line=f.readline()
-    vals=(line.split(" "))[0:12*16]
+    vals=(line.split(" "))[0:12*8]
 
-    for j in range(12*16):
-        val=(int(vals[j],2)-128)
-        bm=int(np.trunc(j/16))
-        sam=16*i+(15-j % 16)
+    for j in range(12*8):
+        if "X" in vals[j]:
+            val=-40
+        else:
+            val=(int(vals[j],2)-128)
+        bm=int(np.trunc(j/8))
+        sam=8*i+(7-j % 8)
         beam_data[bm][sam]=val
 
 f=open("data/output_power.txt")
 power_data=np.zeros((12,1024))
-for i in range(256):
+for i in range(128):
     line=f.readline()
 
     if "X" in line:
-        for j in range(12*4):
-            bm=int(np.trunc(j/4))
-            sam=4*i+(3-j % 4)
+        for j in range(12*2):
+            bm=int(np.trunc(j/2))
+            sam=2*i+(1-j % 2)
             power_data[bm][sam]=0
 
     else:
         vals=(line.split(" "))
-        for j in range(12*4):
+        for j in range(12*2):
             val=(int(vals[j],2))
-            bm=int(np.trunc(j/4))
-            sam=4*i+(3-j % 4)
+            bm=int(np.trunc(j/2))
+            sam=2*i+(1-j % 2)
             power_data[bm][sam]=val
 
 trigs=np.loadtxt("data/output_trigger.txt")
 
 f=.472
 beams=list(np.arange(0,12,1))
-t_base=np.arange(0,1024,1)/f
-t_up=np.arange(0,1024,.25)/f
-t_beamformed=np.arange(0,1024,.25)/f
+t_base=np.arange(0,2048,1)/f
+t_up=np.arange(0,2048,.5)/f
+t_beamformed=np.arange(0,2048,.5)/f
 t_power=np.arange(0,1024,1)/f
-t_trig=np.arange(0,1024,4)/f
+t_trig=np.arange(0,2048,4)/f
 
-ts_base=np.arange(0,1024,1)
-ts_up=np.arange(0,1024,.25)
+ts_base=np.arange(0,2048,1)
+ts_up=np.arange(0,2048,.5)
 
 fig,ax=plt.subplots(3,1,sharex=True,figsize=(10,8))
 for i in range(4):
-    ax[0].plot(t_base,input_data[i],label="ch %i input"%i)
+    ax[0].plot(t_base,input_data[i]-128,label="ch %i input"%i)
     ax[0].plot(t_up,up_data[i],label="ch %i upsampled"%i)
-print(list(up_data[3]))
+#print(list(up_data[3]))
 ax[0].legend(loc="upper right",fontsize=7)
 ax[0].set_ylabel("Channel Traces [adc]")
 np.save("data/processed_upsampled.npy",up_data)

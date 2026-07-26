@@ -14,7 +14,7 @@ for i in range(12):
     f.write(f"{thresholds[-i]:08b} ")
 f.close()
 
-thresholds=np.ones(12,dtype=int)*10
+thresholds=np.ones(12,dtype=int)*1000
 
 f=open("data/input_power_thresholds.txt","w")
 for i in range(12):

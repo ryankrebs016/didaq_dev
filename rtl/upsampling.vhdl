@@ -104,7 +104,7 @@ begin
             for  ch in 0 to 3 loop
                 for sam in 0 to NUM_SAMPLES*INTERP_FACTOR-1 loop
 
-                    --convolve with filter in parts
+                    --convolve with filter in parts, bit shifts and adds
                     ---2,6,10,14,22,26.30,34 zero
                     int_up(0,ch,sam) <= resize(padded_sig(ch,0+sam),16); -- c0
                     int_up(1,ch,sam) <= resize(padded_sig(ch,1+sam),16); -- c1

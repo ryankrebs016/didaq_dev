@@ -5,7 +5,6 @@ use std.textio.all;
 --use ieee.std_logic_textio.all;
 
 use work.defs.all;
-use work.register_map.all;
 use work.all;
 
 entity wave_tb is
@@ -19,15 +18,15 @@ component upsampling is
     port(
             rst_i			:	in		std_logic;
             clk_data_i	:	in		std_logic; --data clock
-            enable : in std_logic;
-            ch_data_i : in std_logic_vector(8*step_size*num_channels -1 downto 0);
-            ch_data_o : out std_logic_vector(8*step_size*num_channels*interp_factor -1 downto 0)
+            enable_i : in std_logic;
+            ch_data_i : in std_logic_vector(8*step_size*num_pa_channels -1 downto 0);
+            ch_data_o : out std_logic_vector(8*step_size*num_pa_channels*interp_factor -1 downto 0)
     
             );
     end component;
     
-    signal upsampling_i : std_logic_vector(8*step_size*num_channels -1 downto 0):=(others=>'0');
-    signal upsampling_o : std_logic_vector(8*step_size*num_channels*interp_factor -1 downto 0):=(others=>'0');
+    signal upsampling_i : std_logic_vector(8*step_size*num_pa_channels -1 downto 0):=(others=>'0');
+    signal upsampling_o : std_logic_vector(8*step_size*num_pa_channels*interp_factor -1 downto 0):=(others=>'0');
     
     
     component beamforming is 
@@ -38,30 +37,30 @@ component upsampling is
         port(
                 rst_i			:	in		std_logic;
                 clk_data_i	:	in		std_logic; --data clock
-                enable : in std_logic;
-                ch_data_i : in std_logic_vector(8*step_size*num_channels*interp_factor -1 downto 0);
-                beam_data_o : out std_logic_vector(num_beams*step_size*interp_factor*8-1 downto 0)
+                enable_i : in std_logic;
+                ch_data_i : in std_logic_vector(8*step_size*num_pa_channels*interp_factor -1 downto 0);
+                beam_data_o : out std_logic_vector(8*num_beams*step_size*interp_factor-1 downto 0)
     
                 );
         end component;
     
-    signal beaming_i : std_logic_vector(8*step_size*num_channels*interp_factor -1 downto 0):=(others=>'0');
-    signal beaming_o : std_logic_vector(num_beams*8*step_size*interp_factor-1 downto 0):=(others=>'0');
+    signal beaming_i : std_logic_vector(8*step_size*num_pa_channels*interp_factor -1 downto 0):=(others=>'0');
+    signal beaming_o : std_logic_vector(8*num_beams*step_size*interp_factor-1 downto 0):=(others=>'0');
     
     
     component power_integration is 
         port(
                 rst_i			:	in		std_logic;
                 clk_data_i	:	in		std_logic; --data clock
-                enable : in std_logic;
+                enable_i : in std_logic;
                 beam_data_i : in std_logic_vector(num_beams*step_size*interp_factor*8-1 downto 0);
-                power_o : out std_logic_vector(14*4*num_beams-1 downto 0)
+                power_o : out std_logic_vector(14*2*num_beams-1 downto 0)
     
                 );
         end component;
     
     signal power_integration_i : std_logic_vector(num_beams*step_size*interp_factor*8-1 downto 0):=(others=>'0');
-    signal power_integration_o : std_logic_vector(14*4*num_beams-1 downto 0):=(others=>'0');
+    signal power_integration_o : std_logic_vector(14*2*num_beams-1 downto 0):=(others=>'0');
     
 -----------------------------------------------------------------------------
 -- Testbench Internal Signals
@@ -79,7 +78,7 @@ signal ch3_samples:std_logic_vector(31 downto 0):=x"80808080";
 
 begin
 
-    clock <= not clock after 4.237 ns;
+    clock <= not clock after 4 ns;
 
     -----------------------------------------------------------------------------
     -- Instantiate and Map UUT
@@ -88,7 +87,7 @@ begin
     port map (
         rst_i => rst_i,
         clk_data_i => clock,
-        enable => enable,
+        enable_i => enable,
         ch_data_i => upsampling_i,
         ch_data_o => upsampling_o
     );
@@ -112,7 +111,7 @@ begin
     port map (
         rst_i => rst_i,
         clk_data_i => clock,
-        enable => enable,
+        enable_i => enable,
         ch_data_i => beaming_i,
         beam_data_o => beaming_o
     );
@@ -122,7 +121,7 @@ begin
     port map (
         rst_i => rst_i,
         clk_data_i => clock,
-        enable => enable,
+        enable_i => enable,
         beam_data_i => power_integration_i,
         power_o =>  power_integration_o
     );
@@ -155,17 +154,17 @@ begin
         begin
 
             --io files
-            file_open(file_INPUT, "tb/data/input_waveforms.txt", read_mode);
-            file_open(file_UPSAMPLING, "tb/data/output_upsampled.txt", write_mode);
-            file_open(file_BEAMFORMING, "tb/data/output_beamformed.txt", write_mode);
-            file_open(file_POWER, "tb/data/output_power.txt", write_mode);
+            file_open(file_INPUT, "data/input_pa_waveforms.txt", read_mode);
+            file_open(file_UPSAMPLING, "data/output_upsampled.txt", write_mode);
+            file_open(file_BEAMFORMING, "data/output_beamformed.txt", write_mode);
+            file_open(file_POWER, "data/output_power.txt", write_mode);
 
 
             --read in thresholds and assign to regs
 
             --read in samples in sets of 4
             while not endfile(file_INPUT) loop
-                wait for 8.474 ns; --about 1/118e6 ns, one full clock cycle
+                wait for 8 ns; --about 1/118e6 ns, one full clock cycle
 
                 readline(file_INPUT, v_ILINE);
                 read(v_ILINE, ch0_samples_tmp);
@@ -187,7 +186,7 @@ begin
                 writeline(output,v_OLINE);
                 writeline(output,v_OLINE);
 
-                --write(v_OLINE,upsampling_i(31 downto 0),right,32);--4*4*8);
+                --write(v_OLINE,upsampling_i(31 downto 0),right,32);--4*4*8;
                 write(v_OLINE,upsampling_i(7 downto 0),right,8);--4*4*8);
                 writeline(output,v_OLINE);
 
@@ -202,11 +201,11 @@ begin
 
                 writeline(output,v_OLINE);
 
-                write(v_OLINE,upsampling_o,right,4*16*8);
+                write(v_OLINE,upsampling_o,right,4*8*8);
                 writeline(output,v_OLINE);
                 writeline(output,v_OLINE);
 
-                write(v_OLINE,beaming_o,right,12*16*8);
+                write(v_OLINE,beaming_o,right,12*8*8);
                 writeline(output,v_OLINE);
                 writeline(output,v_OLINE);
 
@@ -220,8 +219,8 @@ begin
 
                 --write upsampled waveforms
                 for ch in 0 to 3 loop
-                    for i in 0 to 15 loop
-                        write(v_OLINE,unsigned(upsampling_o(16*8*ch+8*(i+1)-1 downto 16*8*ch+8*i))+128,right,8);
+                    for i in 0 to 7 loop
+                        write(v_OLINE,unsigned(upsampling_o(8*8*ch+8*(i+1)-1 downto 8*8*ch+8*i))+128,right,8);
                         write(v_OLINE, v_SPACE);
                     end loop;
                 end loop;
@@ -229,8 +228,8 @@ begin
 
                 --write beamformed waveforms
                 for bm in 0 to 11 loop
-                    for i in 0 to 15 loop
-                        write(v_OLINE,unsigned(beaming_o(16*8*bm+8*(i+1)-1 downto 16*8*bm+8*i))+128,right,8);
+                    for i in 0 to 7 loop
+                        write(v_OLINE,unsigned(beaming_o(8*8*bm+8*(i+1)-1 downto 8*8*bm+8*i))+128,right,8);
                         write(v_OLINE, v_SPACE);
                     end loop;
                 end loop;
@@ -238,8 +237,8 @@ begin
 
                 --write averaged power
                 for bm in 0 to 11 loop
-                    for i in 0 to 3 loop
-                        write(v_OLINE,unsigned(power_integration_o(14*4*bm+14*(i+1)-1 downto 14*4*bm+14*i)),right,14);
+                    for i in 0 to 1 loop
+                        write(v_OLINE,unsigned(power_integration_o(14*2*bm+14*(i+1)-1 downto 14*2*bm+14*i)),right,14);
                         write(v_OLINE, v_SPACE);
                     end loop;
                 end loop;

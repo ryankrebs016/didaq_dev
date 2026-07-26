@@ -13,7 +13,9 @@ echo "compiliing beamforming"
 ghdl -a --std=08 rtl/beamforming.vhdl
 
 echo "compiliing upsampling"
+#ghdl -a --std=08 rtl/upsampling.vhdl
 ghdl -a --std=08 rtl/upsampling.vhdl
+
 
 echo "compiling power lut"
 ghdl -a --std=08 rtl/power_lut_8.vhdl
@@ -45,3 +47,7 @@ ghdl -e --std=08 simple_beamformed_trigger_tb
 echo "compiliing trigger testbench, scalers not implemented"
 ghdl -a --std=08 tb/trigger_tb.vhdl
 ghdl -e --std=08 trigger_tb
+
+echo "compiliing wave testbench"
+ghdl -a --std=08 tb/wave_tb.vhdl
+ghdl -e --std=08 wave_tb

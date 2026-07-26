@@ -14,6 +14,8 @@ ch_data[0,81]=128-32
 ch_data[1,80]=128+32
 ch_data[1,81]=128-32
 
+np.savetxt("data/plot_input_waveforms.txt", ch_data)
+
 if False:
     ch0_data=np.loadtxt("data/ch0_test_trace.txt")+128
     ch1_data=np.loadtxt("data/ch1_test_trace.txt")+128
