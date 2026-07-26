@@ -115,6 +115,7 @@ begin
                         int_up(12,ch,sam) <= (resize(padded_sig(ch,16+sam),11)&"00000")+(resize(padded_sig(ch,16+sam),13)&"000"); -- 16
                         int_up(14,ch,sam) <= (resize(padded_sig(ch,18+sam),10)&"000000"); -- c18
 
+                        -- even + odd = odd -> zero sample
                         int_up(1,ch,sam) <= (others=>'0');
                         int_up(2,ch,sam) <= (others=>'0');
                         int_up(4,ch,sam) <= (others=>'0');
@@ -138,6 +139,7 @@ begin
                         int_up(11,ch,sam) <= (resize(padded_sig(ch,15+sam),12)&"0000") + (resize(padded_sig(ch,15+sam),14)&"00"); -- c15
                         int_up(13,ch,sam) <= (resize(padded_sig(ch,17+sam),10)&"000000") - (resize(padded_sig(ch,17+sam),13)&"000") + padded_sig(ch,17+sam); -- c17
 
+                        -- odd + even = off => zero sample
                         int_up(0,ch,sam) <= (others=>'0');
                         int_up(3,ch,sam) <= (others=>'0');
                         int_up(6,ch,sam) <= (others=>'0');
