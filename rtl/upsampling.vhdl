@@ -106,30 +106,46 @@ begin
 
                     --convolve with filter in parts, bit shifts and adds
                     ---2,6,10,14,22,26.30,34 zero
-                    int_up(0,ch,sam) <= resize(padded_sig(ch,0+sam),16); -- c0
-                    int_up(1,ch,sam) <= resize(padded_sig(ch,1+sam),16); -- c1
-                    
-                    int_up(2,ch,sam) <= - resize(padded_sig(ch,3+sam),16);-- c3
-                    int_up(3,ch,sam) <= - (resize(padded_sig(ch,4+sam),15)&'0'); -- c4
+                    if (sam mod 2) = 0 then
+                        -- even + even = even -> real sample
+                        int_up(0,ch,sam) <= resize(padded_sig(ch,0+sam),16); -- c0
+                        int_up(3,ch,sam) <= - (resize(padded_sig(ch,4+sam),15)&'0'); -- c4
+                        int_up(6,ch,sam) <= (resize(padded_sig(ch,8+sam),14)&"00") + padded_sig(ch,8+sam); -- c8
+                        int_up(9,ch,sam) <= - (resize(padded_sig(ch,12+sam),12)&"0000") + (resize(padded_sig(ch,12+sam),14)&"00") + padded_sig(ch,12+sam); -- c12
+                        int_up(12,ch,sam) <= (resize(padded_sig(ch,16+sam),11)&"00000")+(resize(padded_sig(ch,16+sam),13)&"000"); -- 16
+                        int_up(14,ch,sam) <= (resize(padded_sig(ch,18+sam),10)&"000000"); -- c18
 
-                    int_up(4,ch,sam) <= -(resize(padded_sig(ch,5+sam),15)&"0"); -- c5
-                    int_up(5,ch,sam) <= (resize(padded_sig(ch,7+sam),15)&'0') + padded_sig(ch,7+sam); -- c7
+                        int_up(1,ch,sam) <= (others=>'0');
+                        int_up(2,ch,sam) <= (others=>'0');
+                        int_up(4,ch,sam) <= (others=>'0');
+                        int_up(5,ch,sam) <= (others=>'0');
+                        int_up(7,ch,sam) <= (others=>'0');
+                        int_up(8,ch,sam) <= (others=>'0');
+                        int_up(10,ch,sam) <= (others=>'0');
+                        int_up(11,ch,sam) <= (others=>'0');
+                        int_up(13,ch,sam) <= (others=>'0');
 
-                    int_up(6,ch,sam) <= (resize(padded_sig(ch,8+sam),14)&"00") + padded_sig(ch,8+sam); -- c8
-                    int_up(7,ch,sam) <= (resize(padded_sig(ch,9+sam),14)&"00"); -- c9
+                    else
+                        -- odd + odd = even -> real sample
 
-                    int_up(8,ch,sam) <= - (resize(padded_sig(ch,11+sam),14)&"00") - (resize(padded_sig(ch,11+sam),15)&'0'); -- c11
-                    int_up(9,ch,sam) <= - (resize(padded_sig(ch,12+sam),12)&"0000") + (resize(padded_sig(ch,12+sam),14)&"00") + padded_sig(ch,12+sam); -- c12
+                        int_up(1,ch,sam) <= resize(padded_sig(ch,1+sam),16); -- c1
+                        int_up(2,ch,sam) <= - resize(padded_sig(ch,3+sam),16);-- c3
+                        int_up(4,ch,sam) <= -(resize(padded_sig(ch,5+sam),15)&"0"); -- c5
+                        int_up(5,ch,sam) <= (resize(padded_sig(ch,7+sam),15)&'0') + padded_sig(ch,7+sam); -- c7
+                        int_up(7,ch,sam) <= (resize(padded_sig(ch,9+sam),14)&"00"); -- c9
+                        int_up(8,ch,sam) <= - (resize(padded_sig(ch,11+sam),14)&"00") - (resize(padded_sig(ch,11+sam),15)&'0'); -- c11
+                        int_up(10,ch,sam) <= - (resize(padded_sig(ch,13+sam),13)&"000") - (resize(padded_sig(ch,13+sam),15)&'0'); -- c13
+                        int_up(11,ch,sam) <= (resize(padded_sig(ch,15+sam),12)&"0000") + (resize(padded_sig(ch,15+sam),14)&"00"); -- c15
+                        int_up(13,ch,sam) <= (resize(padded_sig(ch,17+sam),10)&"000000") - (resize(padded_sig(ch,17+sam),13)&"000") + padded_sig(ch,17+sam); -- c17
 
-                    int_up(10,ch,sam) <= - (resize(padded_sig(ch,13+sam),13)&"000") - (resize(padded_sig(ch,13+sam),15)&'0'); -- c13
-                    int_up(11,ch,sam) <= (resize(padded_sig(ch,15+sam),12)&"0000") + (resize(padded_sig(ch,15+sam),14)&"00"); -- c15
+                        int_up(0,ch,sam) <= (others=>'0');
+                        int_up(3,ch,sam) <= (others=>'0');
+                        int_up(6,ch,sam) <= (others=>'0');
+                        int_up(9,ch,sam) <= (others=>'0');
+                        int_up(12,ch,sam) <= (others=>'0');
+                        int_up(14,ch,sam) <= (others=>'0');
 
-                    int_up(12,ch,sam) <= (resize(padded_sig(ch,16+sam),11)&"00000")+(resize(padded_sig(ch,16+sam),13)&"000"); -- 16
-                    int_up(13,ch,sam) <= (resize(padded_sig(ch,17+sam),10)&"000000") - (resize(padded_sig(ch,17+sam),13)&"000") + padded_sig(ch,17+sam); -- c17
-
-                    int_up(14,ch,sam) <= (resize(padded_sig(ch,18+sam),10)&"000000"); -- c18
-
-
+                    end if;
 
                     -- polyphase
                     int_up_1(ch,sam) <= int_up(0,ch,sam) + int_up(0,ch,sam+1) + int_up(0,ch,sam+36) + int_up(0,ch,sam+35);
