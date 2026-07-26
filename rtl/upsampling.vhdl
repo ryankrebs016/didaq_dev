@@ -48,6 +48,8 @@ architecture rtl of upsampling is
     signal int_up_second: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_third: fir_temp_big:=(others=>(others=>x"0000"));
 
+    -- for generality these are the same sizes, but could be optimized on a per coefficient basis since coefficients are 
+    -- either close (near the center coeff so less delay needed when reused) or far (early coeff so need to wait a longer time to be used)
     signal int_up_1: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_m1: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_m2: fir_temp_big:=(others=>(others=>x"0000"));
@@ -60,11 +62,6 @@ architecture rtl of upsampling is
     signal int_up_18: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_40: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_57: fir_temp_big:=(others=>(others=>x"0000"));
-
-
-
-
-
 
 begin
 
