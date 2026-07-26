@@ -39,30 +39,32 @@ architecture rtl of upsampling is
     type padded_t is array(3 downto 0, NUM_SAMPLES*INTERP_FACTOR-1+upsample_filter_length downto 0) of signed(7 downto 0);
     signal padded_sig: padded_t:=(others=>(others=>x"00"));
 
-    type fir_temp is array(3 downto 0, NUM_SAMPLES*INTERP_FACTOR-1 downto 0) of signed(15 downto 0);
-    signal int_up0: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up1: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up2: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up3: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up4: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up5: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up6: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up7: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up8: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up9: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up10: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up11: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up12: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up13: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up14: fir_temp:=(others=>(others=>x"0000"));
-    signal int_up15: fir_temp:=(others=>(others=>x"0000"));
+    type fir_temp is array(14 downto 0, 3 downto 0, NUM_SAMPLES*INTERP_FACTOR+upsample_filter_length-1 downto 0) of signed(15 downto 0);
+    signal int_up: fir_temp:=(others=>(others=>(others=>x"0000")));
 
     type fir_temp_big is array(3 downto 0, NUM_SAMPLES*INTERP_FACTOR-1 downto 0) of signed(15 downto 0);
-    signal int_up: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_final: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_first: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_second: fir_temp_big:=(others=>(others=>x"0000"));
     signal int_up_third: fir_temp_big:=(others=>(others=>x"0000"));
-    signal int_up_fourth: fir_temp_big:=(others=>(others=>x"0000"));
+
+    signal int_up_1: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_m1: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_m2: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_3: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_5: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_4: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_m6: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_m11: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_m10: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_18: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_40: fir_temp_big:=(others=>(others=>x"0000"));
+    signal int_up_57: fir_temp_big:=(others=>(others=>x"0000"));
+
+
+
+
+
 
 begin
 
@@ -104,70 +106,62 @@ begin
 
                     --convolve with filter in parts
                     ---2,6,10,14,22,26.30,34 zero
-                    int_up0(ch,sam) <= resize(padded_sig(ch,0+sam),16) -- c0
-                                        + padded_sig(ch,1+sam); -- c1
+                    int_up(0,ch,sam) <= resize(padded_sig(ch,0+sam),16); -- c0
+                    int_up(1,ch,sam) <= resize(padded_sig(ch,1+sam),16); -- c1
                     
-                    int_up1(ch,sam) <= -padded_sig(ch,3+sam) -- c3
-                                        - (resize(padded_sig(ch,4+sam),15)&'0'); -- c4
+                    int_up(2,ch,sam) <= - resize(padded_sig(ch,3+sam),16);-- c3
+                    int_up(3,ch,sam) <= - (resize(padded_sig(ch,4+sam),15)&'0'); -- c4
 
-                    int_up2(ch,sam) <= -(resize(padded_sig(ch,5+sam),15)&"0") -- c5
-                                        + (resize(padded_sig(ch,7+sam),15)&'0') + padded_sig(ch,7+sam); -- c7
+                    int_up(4,ch,sam) <= -(resize(padded_sig(ch,5+sam),15)&"0"); -- c5
+                    int_up(5,ch,sam) <= (resize(padded_sig(ch,7+sam),15)&'0') + padded_sig(ch,7+sam); -- c7
 
-                    int_up3(ch,sam) <= (resize(padded_sig(ch,8+sam),14)&"00") + padded_sig(ch,8+sam) -- c8
-                                        + (resize(padded_sig(ch,9+sam),14)&"00"); -- c9
+                    int_up(6,ch,sam) <= (resize(padded_sig(ch,8+sam),14)&"00") + padded_sig(ch,8+sam); -- c8
+                    int_up(7,ch,sam) <= (resize(padded_sig(ch,9+sam),14)&"00"); -- c9
 
-                    int_up4(ch,sam) <= - (resize(padded_sig(ch,11+sam),14)&"00") - (resize(padded_sig(ch,11+sam),15)&'0') -- c11
-                                        - (resize(padded_sig(ch,12+sam),12)&"0000") + (resize(padded_sig(ch,12+sam),14)&"00") + padded_sig(ch,12+sam); -- c12
+                    int_up(8,ch,sam) <= - (resize(padded_sig(ch,11+sam),14)&"00") - (resize(padded_sig(ch,11+sam),15)&'0'); -- c11
+                    int_up(9,ch,sam) <= - (resize(padded_sig(ch,12+sam),12)&"0000") + (resize(padded_sig(ch,12+sam),14)&"00") + padded_sig(ch,12+sam); -- c12
 
-                    int_up5(ch,sam) <= - (resize(padded_sig(ch,13+sam),13)&"000") - (resize(padded_sig(ch,13+sam),15)&'0') -- c13
-                                        + (resize(padded_sig(ch,15+sam),12)&"0000") + (resize(padded_sig(ch,15+sam),14)&"00"); -- c15
+                    int_up(10,ch,sam) <= - (resize(padded_sig(ch,13+sam),13)&"000") - (resize(padded_sig(ch,13+sam),15)&'0'); -- c13
+                    int_up(11,ch,sam) <= (resize(padded_sig(ch,15+sam),12)&"0000") + (resize(padded_sig(ch,15+sam),14)&"00"); -- c15
 
-                    int_up6(ch,sam) <= (resize(padded_sig(ch,16+sam),11)&"00000")+(resize(padded_sig(ch,16+sam),13)&"000") -- 16
-                                        + (resize(padded_sig(ch,17+sam),10)&"000000") - (resize(padded_sig(ch,17+sam),13)&"000") + padded_sig(ch,17+sam); -- c17
+                    int_up(12,ch,sam) <= (resize(padded_sig(ch,16+sam),11)&"00000")+(resize(padded_sig(ch,16+sam),13)&"000"); -- 16
+                    int_up(13,ch,sam) <= (resize(padded_sig(ch,17+sam),10)&"000000") - (resize(padded_sig(ch,17+sam),13)&"000") + padded_sig(ch,17+sam); -- c17
 
-                    int_up7(ch,sam) <= (resize(padded_sig(ch,18+sam),10)&"000000") -- c18
+                    int_up(14,ch,sam) <= (resize(padded_sig(ch,18+sam),10)&"000000"); -- c18
 
-                    
-                                       + (resize(padded_sig(ch,19+sam),10)&"000000") - (resize(padded_sig(ch,19+sam),13)&"000") + padded_sig(ch,19+sam);  -- c19
 
-                    int_up8(ch,sam) <= (resize(padded_sig(ch,20+sam),11)&"00000")+(resize(padded_sig(ch,20+sam),13)&"000") -- c20
-                                       + (resize(padded_sig(ch,21+sam),12)&"0000") + (resize(padded_sig(ch,21+sam),14)&"00");  -- c21
 
-                    int_up9(ch,sam) <= - (resize(padded_sig(ch,23+sam),13)&"000") - (resize(padded_sig(ch,23+sam),15)&'0') -- c23
-                                        - (resize(padded_sig(ch,24+sam),12)&"0000") + (resize(padded_sig(ch,24+sam),14)&"00") + padded_sig(ch,24+sam); -- c24
+                    -- polyphase
+                    int_up_1(ch,sam) <= int_up(0,ch,sam) + int_up(0,ch,sam+1) + int_up(0,ch,sam+36) + int_up(0,ch,sam+35);
+                    int_up_m1(ch,sam) <= int_up(2,ch,sam) + int_up(2,ch,sam+30);
+                    int_up_m2(ch,sam) <= int_up(3,ch,sam) + int_up(3,ch,sam+1) + int_up(3,ch,sam+27) + int_up(3,ch,sam+28);
+                    int_up_3(ch,sam) <= int_up(5,ch,sam) +int_up(5,ch,sam+22);
+                    int_up_5(ch,sam) <=  int_up(6,ch,sam) + int_up(6,ch,sam+20);
+                    int_up_4(ch,sam) <= int_up(7,ch,sam) + int_up(7,ch,sam+18);
+                    int_up_m6(ch,sam) <= int_up(8,ch,sam) + int_up(8,ch,sam+14);
+                    int_up_m11(ch,sam) <= int_up(9,ch,sam) + int_up(9,ch,sam+12);
+                    int_up_m10(ch,sam) <= int_up(10,ch,sam) + int_up(10,ch,sam+10);
+                    int_up_18(ch,sam) <= int_up(11,ch,sam) + int_up(11,ch,sam+6);
+                    int_up_40(ch,sam) <= int_up(12,ch,sam) + int_up(12,ch,sam+4);
+                    int_up_57(ch,sam) <= int_up(13,ch,sam) + int_up(13,ch,sam+2) + int_up(14,ch,sam); --throw 64 here
 
-                    int_up10(ch,sam) <= - (resize(padded_sig(ch,25+sam),14)&"00") - (resize(padded_sig(ch,25+sam),15)&'0') -- c25
-                                        + (resize(padded_sig(ch,27+sam),14)&"00");  -- c27
-
-                    int_up11(ch,sam) <= (resize(padded_sig(ch,28+sam),14)&"00") + padded_sig(ch,28+sam) -- c28
-                                         + (resize(padded_sig(ch,29+sam),15)&'0') + padded_sig(ch,29+sam);  -- c29
-
-                    int_up12(ch,sam) <= -(resize(padded_sig(ch,31+sam),15)&"0")-- c31
-                                        - (resize(padded_sig(ch,32+sam),15)&'0'); -- c32
-
-                    int_up13(ch,sam) <= - resize(padded_sig(ch,33+sam),16) -- c33
-                                        + padded_sig(ch,35+sam); -- c35
-
-                    int_up14(ch,sam) <= resize(padded_sig(ch,36+sam),16); -- c36
 
                     --sum parts first stage
-                    int_up_first(ch,sam) <= int_up0(ch,sam) + int_up1(ch,sam) + int_up2(ch,sam) + int_up3(ch,sam);
-                    int_up_second(ch,sam) <= int_up4(ch,sam) + int_up5(ch,sam) + int_up6(ch,sam);
-                    int_up_third(ch,sam) <= int_up7(ch,sam) + int_up8(ch,sam) + int_up9(ch,sam) + int_up10(ch,sam);
-                    int_up_fourth(ch,sam) <= int_up11(ch,sam) + int_up12(ch,sam) + int_up13(ch,sam) + int_up14(ch,sam);
+                    int_up_first(ch,sam) <= int_up_1(ch,sam) + int_up_m1(ch,sam) + int_up_m2(ch,sam) + int_up_3(ch,sam) + int_up_5(ch,sam) + int_up_4(ch,sam);
+                    int_up_second(ch,sam) <= int_up_m6(ch,sam) + int_up_m11(ch,sam) + int_up_m10(ch,sam) + int_up_18(ch,sam) + int_up_40(ch,sam) + int_up_57(ch,sam);
 
                     --sum parts second stage
-                    int_up(ch,sam)<=int_up_first(ch,sam) + int_up_second(ch,sam) + int_up_third(ch,sam) + int_up_fourth(ch,sam);
+                    int_up_final(ch,sam)<=int_up_first(ch,sam) + int_up_second(ch,sam);
 
                     --do division (bit shifting) with rounding
-                    if unsigned(int_up(ch,sam)(5 downto 0)) > x"20" then
-                        interp_data(ch,sam)<=resize(signed(int_up(ch,sam)(15 downto 6)),8)+1;
-                    elsif unsigned(int_up(ch,sam)(5 downto 0)) = x"20" and int_up(ch,sam)(6) = '0' then
-                        interp_data(ch,sam)<=resize(signed(int_up(ch,sam)(15 downto 6)),8);
-                    elsif unsigned(int_up(ch,sam)(5 downto 0)) = x"20" and int_up(ch,sam)(6) = '1' then
-                        interp_data(ch,sam)<=resize(signed(int_up(ch,sam)(15 downto 6)),8) + 1;
+                    if unsigned(int_up_final(ch,sam)(5 downto 0)) > x"20" then
+                        interp_data(ch,sam)<=resize(signed(int_up_final(ch,sam)(15 downto 6)),8)+1;
+                    elsif unsigned(int_up_final(ch,sam)(5 downto 0)) = x"20" and int_up_final(ch,sam)(6) = '0' then
+                        interp_data(ch,sam)<=resize(signed(int_up_final(ch,sam)(15 downto 6)),8);
+                    elsif unsigned(int_up_final(ch,sam)(5 downto 0)) = x"20" and int_up_final(ch,sam)(6) = '1' then
+                        interp_data(ch,sam)<=resize(signed(int_up_final(ch,sam)(15 downto 6)),8) + 1;
                     else --unsigned(int_up(ch,sam)(5 downto 0))<x"20" then
-                        interp_data(ch,sam)<=resize(signed(int_up(ch,sam)(15 downto 6)),8);
+                        interp_data(ch,sam)<=resize(signed(int_up_final(ch,sam)(15 downto 6)),8);
 
                     end if;
                 end loop;
@@ -175,6 +169,10 @@ begin
                 --shift padded sig for future clock cycles
                 for j in NUM_SAMPLES*INTERP_FACTOR to NUM_SAMPLES*INTERP_FACTOR+upsample_filter_length-1 loop
                     padded_sig(ch,j)<=padded_sig(ch,j-NUM_SAMPLES*INTERP_FACTOR);
+
+                    for fil in 0 to 14 loop
+                        int_up(fil,ch,j) <= int_up(fil,ch,j-NUM_SAMPLES*INTERP_FACTOR);
+                    end loop;
                 end loop;
 
             end loop;
