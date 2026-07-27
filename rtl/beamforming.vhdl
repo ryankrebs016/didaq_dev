@@ -7,29 +7,31 @@ use work.defs.all;
 
 entity beamforming is
     generic(
-            station_number_i : std_logic_vector(7 downto 0);
-            bf_INTERP_FACTOR : integer := 2
-            );
+        station_number_i : std_logic_vector(7 downto 0);
+		SAMPLE_LENGTH   : integer := 8;
+		NUM_SAMPLES     : integer := 4;
+		NUM_PA_CHANNELS : integer := 4;
+		INTERP_FACTOR   : integer := 2);
     
     port(
             rst_i : in std_logic:='0';
             clk_data_i : in	std_logic:='0'; --data clock
             enable_i : in std_logic:='0';
-            ch_data_i : in std_logic_vector(NUM_PA_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR-1 downto 0):=(others=>'0');
-            beam_data_o : out std_logic_vector(NUM_BEAMS*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR-1 downto 0):=(others=>'0')
+            ch_data_i : in std_logic_vector(NUM_PA_CHANNELS*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR-1 downto 0):=(others=>'0');
+            beam_data_o : out std_logic_vector(NUM_BEAMS*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR-1 downto 0):=(others=>'0')
             );
     end beamforming;
     
 architecture rtl of beamforming is
 
-constant interp_data_length: integer := 72; -- atleast 4 (1x up), or 8 (2x up) larger than highest delay
+constant beamforming_buffer_length: integer := 72; -- atleast 4 (1x up), or 8 (2x up) larger than highest delay
 constant baseline: unsigned(7 downto 0) := x"80";
 constant phased_sum_bits: integer := 8; --8. trying 7 bit lut
-constant phased_sum_length: integer := NUM_SAMPLES*bf_INTERP_FACTOR;
+constant phased_sum_length: integer := NUM_SAMPLES*INTERP_FACTOR;
 constant num_stations: integer:=8;
 
 --buffer to store the interpolated sample for being pulled when doing the beamforming / summation
-type interpolated_data_array is array(NUM_PA_CHANNELS-1 downto 0, interp_data_length-1 downto 0) of signed(SAMPLE_LENGTH-1 downto 0);
+type interpolated_data_array is array(NUM_PA_CHANNELS-1 downto 0, beamforming_buffer_length-1 downto 0) of signed(SAMPLE_LENGTH-1 downto 0);
 signal interp_data: interpolated_data_array:= (others=>(others=>(others=>'0')));
 
 --temp buffer to calculate coherent sum waveforms to check for saturation
@@ -97,7 +99,7 @@ constant beam_delays_2x: antenna_delays :=
         end if;
     end function;
 
-constant beam_delays: antenna_delays := get_delays(bf_INTERP_FACTOR);
+constant beam_delays: antenna_delays := get_delays(INTERP_FACTOR);
 
 
 begin
@@ -106,20 +108,20 @@ begin
     begin
             if rst_i = '1' or enable_i='0' then
                 for ch in 0 to NUM_PA_CHANNELS-1 loop
-                        for sam in 0 to interp_data_length-1 loop
-                            interp_data(ch,sam) <= x"00";
+                        for sam in 0 to beamforming_buffer_length-1 loop
+                            interp_data(ch,sam) <= (others=>'0');
                     end loop;
                 end loop;
 
             elsif rising_edge(clk_data_i) then
                     for ch in 0 to NUM_PA_CHANNELS-1 loop
                             -- recieve new samples
-                            for sam in 0 to NUM_SAMPLES*bf_INTERP_FACTOR-1 loop
-                                    interp_data(ch,sam)<=signed(ch_data_i(ch*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR+(sam+1)*SAMPLE_LENGTH-1 downto ch*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR+sam*SAMPLE_LENGTH));
+                            for sam in 0 to NUM_SAMPLES*INTERP_FACTOR-1 loop
+                                    interp_data(ch,sam)<=signed(ch_data_i(ch*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR+(sam+1)*SAMPLE_LENGTH-1 downto ch*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR+sam*SAMPLE_LENGTH));
                             end loop;
                             -- shift sample along buffer
-                            for sam in NUM_SAMPLES*bf_INTERP_FACTOR to interp_data_length-1 loop
-                                    interp_data(ch,sam)<=interp_data(ch,sam-NUM_SAMPLES*bf_INTERP_FACTOR);
+                            for sam in NUM_SAMPLES*INTERP_FACTOR to beamforming_buffer_length-1 loop
+                                    interp_data(ch,sam)<=interp_data(ch,sam-NUM_SAMPLES*INTERP_FACTOR);
                             end loop;
                     end loop;
             end if;
@@ -130,7 +132,7 @@ begin
     begin
 
         for i in 0 to NUM_BEAMS-1 loop --loop over beams
-            for j in 0 to NUM_SAMPLES*bf_INTERP_FACTOR-1 loop
+            for j in 0 to NUM_SAMPLES*INTERP_FACTOR-1 loop
             
                 --async add then clock saturation. adjustable station specific delays - keeping in case
                 --phased_beam_waves_buff(i,j)<=resize(interp_data(0,beam_delays(STATION_INDEX,i,0)+(j)+to_integer(specific_dels(i,0))),10)
@@ -144,7 +146,7 @@ begin
                                             +resize(interp_data(3,beam_delays(station_index,i,3)+(j)),10);
 
                 if rst_i ='1' or enable_i='0' then
-                    phased_beam_waves(i,j) <= x"00";
+                    phased_beam_waves(i,j) <= (others=>'0');
 
                 elsif rising_edge(clk_data_i) then 
                     -- for the simple threshold it might make sense to leave these at 10 bits?
@@ -163,8 +165,8 @@ begin
     end process;
 
     assign_beams_o: for bm in 0 to NUM_BEAMS-1 generate
-            assign_samples_o: for sam in 0 to NUM_SAMPLES*bf_INTERP_FACTOR-1 generate
-                    beam_data_o(bm*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR+(sam+1)*SAMPLE_LENGTH-1 downto bm*NUM_SAMPLES*SAMPLE_LENGTH*bf_INTERP_FACTOR+sam*SAMPLE_LENGTH)<=std_logic_vector(phased_beam_waves(bm,sam));
+            assign_samples_o: for sam in 0 to NUM_SAMPLES*INTERP_FACTOR-1 generate
+                    beam_data_o(bm*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR+(sam+1)*SAMPLE_LENGTH-1 downto bm*NUM_SAMPLES*SAMPLE_LENGTH*INTERP_FACTOR+sam*SAMPLE_LENGTH)<=std_logic_vector(phased_beam_waves(bm,sam));
             end generate;
     end generate;
 

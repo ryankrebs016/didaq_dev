@@ -46,7 +46,7 @@ for i in range(int(2048*2/32)):
         beam_data[bm][sam]=val
 
 f=open("data/output_power.txt")
-power_data=np.zeros((12,1024))
+power_data=np.zeros((12,512))
 for i in range(128):
     line=f.readline()
 
@@ -71,7 +71,7 @@ beams=list(np.arange(0,12,1))
 t_base=np.arange(0,2048,1)/f
 t_up=np.arange(0,2048,.5)/f
 t_beamformed=np.arange(0,2048,.5)/f
-t_power=np.arange(0,1024,1)/f
+t_power=np.arange(0,1024,2)/f
 t_trig=np.arange(0,2048,4)/f
 
 ts_base=np.arange(0,2048,1)
@@ -95,7 +95,7 @@ np.save("data/processed_beam_traces.npy",beam_data)
 for i in range(12):
     ax[2].plot(t_power,power_data[i],label="beam %i"%i,color=beam_colors[i])
 
-ax[2].vlines(t_trig[np.where(trigs>0)[0]],0,np.max(power_data.flatten()),linestyle="--",color="black",label="trigger") #ax[2].plot(t_trig,trigs*np.max(p),label="triggers")
+#ax[2].vlines(t_trig[np.where(trigs>0)[0]],0,np.max(power_data.flatten()),linestyle="--",color="black",label="trigger") #ax[2].plot(t_trig,trigs*np.max(p),label="triggers")
 ax[2].legend(loc="upper right",fontsize=7)
 ax[2].set_ylabel("Beam Power [adc$^2$]")
 np.save("data/processed_powers.npy",power_data)
