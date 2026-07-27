@@ -54,20 +54,20 @@ component upsampling is
                 clk_data_i	:	in		std_logic; --data clock
                 enable_i : in std_logic;
                 beam_data_i : in std_logic_vector(num_beams*step_size*interp_factor*8-1 downto 0);
-                power_o : out std_logic_vector(14*2*num_beams-1 downto 0)
+                power_o : out std_logic_vector(16*2*num_beams-1 downto 0)
     
                 );
         end component;
     
     signal power_integration_i : std_logic_vector(num_beams*step_size*interp_factor*8-1 downto 0):=(others=>'0');
-    signal power_integration_o : std_logic_vector(14*2*num_beams-1 downto 0):=(others=>'0');
+    signal power_integration_o : std_logic_vector(16*2*num_beams-1 downto 0):=(others=>'0');
     
 -----------------------------------------------------------------------------
 -- Testbench Internal Signals
 -----------------------------------------------------------------------------
 signal  clock : std_logic := '1';
 signal rst_i: std_logic:='0';
-signal enable: std_logic:='1';
+signal enable: std_logic:='0';
 --type input_samples_t is unsigned(31 downto 0);
 
 signal ch0_samples:std_logic_vector(31 downto 0):=x"80808080";
@@ -79,7 +79,7 @@ signal ch3_samples:std_logic_vector(31 downto 0):=x"80808080";
 begin
 
     clock <= not clock after 4 ns;
-
+    enable <= '1' after 64 ns;
     -----------------------------------------------------------------------------
     -- Instantiate and Map UUT
     -----------------------------------------------------------------------------
@@ -209,7 +209,7 @@ begin
                 writeline(output,v_OLINE);
                 writeline(output,v_OLINE);
 
-                write(v_OLINE,power_integration_o,right,12*14*4);
+                write(v_OLINE,power_integration_o,right,12*16*2);
                 writeline(output,v_OLINE);
                 --write(v_OLINE,ch0_output,right,32*4);
                 --writeline(output,v_OLINE);
@@ -238,7 +238,7 @@ begin
                 --write averaged power
                 for bm in 0 to 11 loop
                     for i in 0 to 1 loop
-                        write(v_OLINE,unsigned(power_integration_o(14*2*bm+14*(i+1)-1 downto 14*2*bm+14*i)),right,14);
+                        write(v_OLINE,unsigned(power_integration_o(16*2*bm+16*(i+1)-1 downto 16*2*bm+16*i)),right,16);
                         write(v_OLINE, v_SPACE);
                     end loop;
                 end loop;
