@@ -42,7 +42,7 @@ signal phased_beam_waves_buff: phased_arr_buff:= (others=>(others=>"0000000000")
 type phased_arr is array (NUM_BEAMS-1 downto 0, phased_sum_length-1 downto 0) of signed(phased_sum_bits-1 downto 0);-- range 0 to 2**phased_sum_bits-1; --phased sum... log2(16*8)=7bits
 signal phased_beam_waves: phased_arr:= (others=>(others=>(others=>'0')));
 
-type antenna_delays is array (num_stations-1 downto 0, NUM_BEAMS-1 downto 0, NUM_PA_CHANNELS-1 downto 0) of integer range 0 to 127;
+type antenna_delays is array (num_stations-1 downto 0, 12-1 downto 0, NUM_PA_CHANNELS-1 downto 0) of integer range 0 to 127;
 --12 beams equally spaced between -60 and 60 generated with make_beams.py
 
 
