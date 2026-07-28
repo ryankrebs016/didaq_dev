@@ -218,29 +218,16 @@ begin
 
             /*
 
-            --divide and round, hope dont overflow
-            if (power_sum_10(i)(4 downto 0))>=x"10" then
-                avg_power(0,i)<=resize(unsigned(power_sum_10(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length)+1;
+            if (running_sum_c(i)(4 downto 0))>=x"10" then
+                avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
             else
-                avg_power(0,i)<=resize(unsigned(power_sum_10(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length);
+                avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length);
             end if;
 
-            if (power_sum_11(i)(4 downto 0))>=x"10" then
-                avg_power(1,i)<=resize(unsigned(power_sum_11(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length)+1;
+            if (running_sum_d(i)(4 downto 0))>=x"10" then
+                avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
             else
-                avg_power(1,i)<=resize(unsigned(power_sum_11(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length);
-            end if;
-
-            if (power_sum_12(i)(4 downto 0))>=x"10" then
-                avg_power(2,i)<=resize(unsigned(power_sum_12(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length)+1;
-            else
-                avg_power(2,i)<=resize(unsigned(power_sum_12(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length);
-            end if;
-
-            if (power_sum_13(i)(4 downto 0))>=x"10" then
-                avg_power(3,i)<=resize(unsigned(power_sum_13(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length)+1;
-            else
-                avg_power(3,i)<=resize(unsigned(power_sum_13(i)(power_sum_10(0)'length-1 downto 5)),avg_power0(0)'length);
+                avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length);
             end if;
             */
 

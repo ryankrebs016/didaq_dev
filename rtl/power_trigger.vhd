@@ -19,27 +19,34 @@ use work.defs.all;
 
 entity power_trigger is
 generic(
-        station_number : std_logic_vector(7 downto 0):=x"0b"
+        station_number : std_logic_vector(7 downto 0):=x"0b";
+        SAMPLE_LENGTH   : integer := 8;
+		NUM_SAMPLES     : integer := 4;
+		NUM_PA_CHANNELS : integer := 4;
+		INTERP_FACTOR   : integer := 2;
+        NUM_POWERS      : integer := 2;
+        POWER_LENGTH    : integer := 16;
+        SWAP_CHANNELS   : std_logic := '1'
         );
 
 port(
         rst_i :	in std_logic;
 
         -- adc data
-        clk_data_i      : in std_logic; --data clock
-        ch0_data_i      : in	std_logic_vector(31 downto 0);
-        ch1_data_i      : in	std_logic_vector(31 downto 0);
-        ch2_data_i      : in	std_logic_vector(31 downto 0);
-        ch3_data_i      : in	std_logic_vector(31 downto 0);
-        data_valid_i    : in std_logic_vector(3 downto 0);
+        clk_data_i      : in    std_logic; --data clock
+        ch0_data_i      : in    std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0);
+        ch1_data_i      : in	std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0);
+        ch2_data_i      : in	std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0);
+        ch3_data_i      : in	std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES-1 downto 0);
+        data_valid_i    : in    std_logic_vector(NUM_PA_CHANNELS-1 downto 0);
 
         -- register things
         clk_reg_i           : in std_logic := '0'; --register clock 
         enable_i            : in std_logic;
         beam_mask_i         : in std_logic_vector(NUM_BEAMS-1 downto 0);
         channel_mask_i      : in std_logic_vector(NUM_PA_CHANNELS-1 downto 0);
-        trig_thresholds_i   : in std_logic_vector(NUM_BEAMS*12-1 downto 0);
-        servo_thresholds_i  : in std_logic_vector(NUM_BEAMS*12-1 downto 0);
+        trig_thresholds_i   : in std_logic_vector(NUM_BEAMS*POWER_LENGTH-1 downto 0);
+        servo_thresholds_i  : in std_logic_vector(NUM_BEAMS*POWER_LENGTH-1 downto 0);
 
         -- output
         trig_bits_o : out	std_logic_vector(2*(NUM_BEAMS+1)-1 downto 0); --for scalers
@@ -54,7 +61,7 @@ end power_trigger;
 architecture rtl of power_trigger is
 
 --definitions + constants -- I realize I can now just use 'length too
-constant streaming_buffer_length: integer := 8;
+constant streaming_buffer_length: integer := NUM_SAMPLES;
 constant interp_data_length: integer := INTERP_FACTOR*(24)+1;--INTERP_FACTOR*(streaming_buffer_length-1)+1; TODO UPDATE FOR DIDAQ SAMPLING RATE
 constant sample_bit_length: integer:=8;
 constant baseline: unsigned(7 downto 0) := x"80";
@@ -63,14 +70,10 @@ constant phased_sum_length: integer := 32; --8 real samples ... not sure if it s
 constant phased_sum_power_bits: integer := 16;--16 with calc. trying 7-> 14 lut
 constant num_power_bits: integer := 18;
 constant power_sum_bits: integer := 18; --actually 25 but this fits into the io regs
-constant input_power_thresh_bits:	integer := 12;
-constant power_length: integer := 12;
-constant num_div: integer := 5;--can be calculated using -> integer(log2(real(phased_sum_length)));
-constant pad_zeros: std_logic_vector(num_div-1 downto 0):=(others=>'0');
-constant NUM_PA_CHANNELS:integer:=4;
+constant input_power_thresh_bits:	integer := 16;
                                     
 --short streaming regs to ease timing (if needed at all)
-type streaming_data_array is array(NUM_PA_CHANNELS downto 0, NUM_SAMPLES-1 downto 0) of signed(7 downto 0);
+type streaming_data_array is array(NUM_PA_CHANNELS downto 0, NUM_SAMPLES-1 downto 0) of signed(SAMPLE_LENGTH-1 downto 0);
 signal streaming_data : streaming_data_array := (others=>(others=>(others=>'0'))); --pipeline data
 
 --big arrays for thresholds/ average power
@@ -141,7 +144,7 @@ signal upsampling_o : std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES*NUM_PA_CHANNELS
 signal beaming_i : std_logic_vector(SAMPLE_LENGTH*NUM_SAMPLES*NUM_PA_CHANNELS*INTERP_FACTOR -1 downto 0):=(others=>'0');
 signal beaming_o : std_logic_vector(NUM_BEAMS*SAMPLE_LENGTH*NUM_SAMPLES*INTERP_FACTOR-1 downto 0):=(others=>'0');
 signal power_integration_i : std_logic_vector(NUM_BEAMS*NUM_SAMPLES*INTERP_FACTOR*SAMPLE_LENGTH-1 downto 0):=(others=>'0');
-signal power_integration_o : std_logic_vector(14*4*NUM_BEAMS-1 downto 0):=(others=>'0');
+signal power_integration_o : std_logic_vector(14*2*NUM_BEAMS-1 downto 0):=(others=>'0');
 
 
 -------------------------------------------------------------------------------------------------------------------------------
@@ -184,29 +187,49 @@ begin
                 --pull new data in, if not in mask send 0's
                 for i in 0 to NUM_SAMPLES-1 loop
                     if internal_trigger_channel_mask(0)='1' and data_valid_i(0)='1' then
-                        streaming_data(0,i)<=signed(unsigned(ch0_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                        if SWAP_CHANNELS then
+                            streaming_data(0,i) <= signed(unsigned(ch1_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        else
+                            streaming_data(0,i) <= signed(unsigned(ch0_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        end if;
                     else
-                        streaming_data(0,i)<=x"00";
+                        streaming_data(0,i) <= (others=>'0');
                     end if;
 
                     if internal_trigger_channel_mask(1)='1' and data_valid_i(1)='1' then
-                        streaming_data(1,i)<=signed(unsigned(ch1_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                        if SWAP_CHANNELS then
+                            streaming_data(1,i) <= signed(unsigned(ch0_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        else
+                            streaming_data(1,i) <= signed(unsigned(ch1_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        end if;
                     else
-                        streaming_data(1,i)<=x"00";
+                        streaming_data(1,i)<=(others=>'0');
                     end if;
 
                     if internal_trigger_channel_mask(2)='1' and data_valid_i(2)='1' then
-                        streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                        if SWAP_CHANNELS then
+                            streaming_data(2,i) <= signed(unsigned(ch3_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        else
+                            streaming_data(2,i)<=signed(unsigned(ch2_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                        end if;
                     else
-                        streaming_data(2,i)<=x"00";
+                        streaming_data(2,i)<=(others=>'0');
                     end if;
                     
                     if internal_trigger_channel_mask(3)='1' and data_valid_i(3)='1' then
-                        streaming_data(3,i)<=signed(unsigned(ch3_data_i(8*(i+1)-1 downto 8*(i)))-baseline);
+                        if SWAP_CHANNELS then
+                            streaming_data(3,i) <= signed(unsigned(ch2_data_i(SAMPLE_LENGTH*(i+1)-1 downto SAMPLE_LENGTH*(i)))-baseline);
+                        else
+                            streaming_data(3,i) <= signed(unsigned(ch3_data_i(NUM_SAMPLES*(i+1)-1 downto NUM_SAMPLES*(i)))-baseline);
+                        end if;
                     else
-                        streaming_data(3,i)<=x"00";
+                        streaming_data(3,i) <= (others=>'0');
                     end if;
                 end loop;
+            else
+                for i in 0 to NUM_PA_CHANNELS-1 loop
+                    streaming_data(3,i) <= (others=>'0');
+                end loop;          
             end if;
         end if;
     end process;
@@ -216,9 +239,10 @@ begin
     --uncomment for dedisperion
     /*
     -- connect streaming data to dedispersion
-    assign_upsampling_io: for ch in 0 to 3 generate
-        assign_sams_i: for i in 0 to 3 generate
-            dedispersion_i(ch*8*4+8*(i+1)-1 downto ch*8*4+8*i)<=std_logic_vector(streaming_data(ch,i));
+    assign_upsampling_io: for ch in 0 to NUM_PA_CHANNELS-1 generate
+        assign_sams_i: for i in 0 to NUM_PA_CHANNELS-1 generate
+            dedispersion_i(ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*(i+1)-1 downto ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*i)
+                <= std_logic_vector(streaming_data(ch,i));
         end generate;
     end generate;
     --
@@ -235,6 +259,12 @@ begin
     */
 
     xUpsampling : entity work.upsampling
+    generic map(
+        SAMPLE_LENGTH   => SAMPLE_LENGTH,
+		NUM_SAMPLES     => NUM_SAMPLES,
+		NUM_PA_CHANNELS => NUM_PA_CHANNELS,
+		INTERP_FACTOR   => INTERP_FACTOR
+    )
     port map (
         rst_i       => rst_i,
         clk_data_i  => clk_data_i,
@@ -244,9 +274,10 @@ begin
     );
 
     --comment these generates if using dedispersion
-    assign_upsampling_io: for ch in 0 to 3 generate
-        assign_sams_i: for i in 0 to 3 generate
-            upsampling_i(ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*(i+1)-1 downto ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*i)<=std_logic_vector(streaming_data(ch,i));
+    assign_upsampling_io: for ch in 0 to NUM_PA_CHANNELS-1 generate
+        assign_sams_i: for i in 0 to NUM_SAMPLES-1 generate
+            upsampling_i(ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*(i+1)-1 downto ch*SAMPLE_LENGTH*NUM_SAMPLES+SAMPLE_LENGTH*i)
+                <= std_logic_vector(streaming_data(ch,i));
         end generate;
     end generate;
 
@@ -256,7 +287,10 @@ begin
     xBeamforming: entity work.beamforming
     generic map (
         station_number_i => station_number,
-        bf_INTERP_FACTOR => INTERP_FACTOR
+        SAMPLE_LENGTH   => SAMPLE_LENGTH,
+		NUM_SAMPLES     => NUM_SAMPLES,
+		NUM_PA_CHANNELS => NUM_PA_CHANNELS,
+		INTERP_FACTOR   => INTERP_FACTOR
         )
     port map (
         rst_i       => rst_i,
@@ -270,6 +304,14 @@ begin
     power_integration_i<=beaming_o;
 
     xPower: entity work.power_integration
+    generic map(
+        SAMPLE_LENGTH   => SAMPLE_LENGTH,
+		NUM_SAMPLES     => NUM_SAMPLES,
+		NUM_PA_CHANNELS => NUM_PA_CHANNELS,
+		INTERP_FACTOR   => INTERP_FACTOR,
+        NUM_POWERS      => NUM_POWERS,
+        POWER_LENGTH    => POWER_LENGTH
+    )
     port map (
         rst_i       => rst_i,
         clk_data_i  => clk_data_i,
@@ -281,8 +323,8 @@ begin
     --connect output of power
     assing_power_o: for bm in 0 to NUM_BEAMS-1 generate
 
-        avg_power0(bm)<=unsigned(power_integration_o(4*14*bm+14-1 downto 4*14*bm));
-        avg_power1(bm)<=unsigned(power_integration_o(4*14*bm+28-1 downto 4*14*bm+14));
+        avg_power0(bm)<=unsigned(power_integration_o(NUM_POWERS*POWER_LENGTH*bm+POWER_LENGTH-1 downto NUM_POWERS*POWER_LENGTH*bm));
+        avg_power1(bm)<=unsigned(power_integration_o(NUM_POWERS*POWER_LENGTH*bm+2*POWER_LENGTH-1 downto NUM_POWERS*POWER_LENGTH*bm+POWER_LENGTH));
         
     end generate;
 
