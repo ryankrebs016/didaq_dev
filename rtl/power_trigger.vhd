@@ -26,7 +26,7 @@ generic(
 		INTERP_FACTOR   : integer := 2;
         NUM_POWERS      : integer := 2;
         POWER_LENGTH    : integer := 16;
-        SWAP_CHANNELS   : std_logic := '1'
+        SWAP_CHANNELS   : std_logic := '0'
         );
 
 port(
