@@ -2,6 +2,13 @@
 -- for the didaq, we can resuse the filter since its cutoff should be f_s/8, sampling rate from 1000MHZ to 2000MHz so cutoff of 250MHz
 -- it does the double duty of low passing the high f image produced from zero stuffing
 -- and low-passing the final bandwidth to 250MHz for trigger performance
+--
+--
+-- Input sample data is structured like Ch3 data (S3, S2, S1, S0) -> Ch0 data (S3, S2, S1, S0) at n-bit samples each
+-- Output is similarly structured Ch3 data (S7, S6, S5, S4, S3, S2, S1, S0) -> Ch0 data (S7, S6, S5, S4, S3, S2, S1, S0) at n-bit samples each
+--
+
+
 library IEEE;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -112,17 +119,6 @@ begin
                         int_up(12,ch,sam) <= (resize(padded_sig(ch,16+sam),2*SAMPLE_LENGTH-5)&"00000")+(resize(padded_sig(ch,16+sam),2*SAMPLE_LENGTH-3)&"000"); -- 16
                         int_up(14,ch,sam) <= (resize(padded_sig(ch,18+sam),2*SAMPLE_LENGTH-6)&"000000"); -- c18
 
-                        -- even + odd = odd -> zero sample
-                        int_up(1,ch,sam) <= (others=>'0');
-                        int_up(2,ch,sam) <= (others=>'0');
-                        int_up(4,ch,sam) <= (others=>'0');
-                        int_up(5,ch,sam) <= (others=>'0');
-                        int_up(7,ch,sam) <= (others=>'0');
-                        int_up(8,ch,sam) <= (others=>'0');
-                        int_up(10,ch,sam) <= (others=>'0');
-                        int_up(11,ch,sam) <= (others=>'0');
-                        int_up(13,ch,sam) <= (others=>'0');
-
                     else
                         -- odd + odd = even -> real sample
 
@@ -135,14 +131,6 @@ begin
                         int_up(10,ch,sam) <= - (resize(padded_sig(ch,13+sam),2*SAMPLE_LENGTH-3)&"000") - (resize(padded_sig(ch,13+sam),2*SAMPLE_LENGTH-1)&'0'); -- c13
                         int_up(11,ch,sam) <= (resize(padded_sig(ch,15+sam),2*SAMPLE_LENGTH-4)&"0000") + (resize(padded_sig(ch,15+sam),2*SAMPLE_LENGTH-2)&"00"); -- c15
                         int_up(13,ch,sam) <= (resize(padded_sig(ch,17+sam),2*SAMPLE_LENGTH-6)&"000000") - (resize(padded_sig(ch,17+sam),2*SAMPLE_LENGTH-3)&"000") + padded_sig(ch,17+sam); -- c17
-
-                        -- odd + even = off => zero sample
-                        int_up(0,ch,sam) <= (others=>'0');
-                        int_up(3,ch,sam) <= (others=>'0');
-                        int_up(6,ch,sam) <= (others=>'0');
-                        int_up(9,ch,sam) <= (others=>'0');
-                        int_up(12,ch,sam) <= (others=>'0');
-                        int_up(14,ch,sam) <= (others=>'0');
 
                     end if;
 
