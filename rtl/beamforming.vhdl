@@ -1,4 +1,14 @@
--- this one assumes 4 samples are fed in at a time (no upsampling)
+--
+--
+--
+--
+-- Input is mapped like Ch3 data (S7, S6, S5, S4, S3, S2, S1, S0) -> Ch0 data (S7, S6, S5, S4, S3, S2, S1, S0) at n-bit samples each
+-- Output is mapped like Bm11 data (S7, S6, S5, S4, S3, S2, S1, S0) -> Bm0 (S7, S6, S5, S4, S3, S2, S1, S0) at n-bit samples each
+--
+--
+--
+
+
 
 library IEEE;
 use ieee.std_logic_1164.all;
@@ -24,7 +34,7 @@ entity beamforming is
     
 architecture rtl of beamforming is
 
-constant beamforming_buffer_length: integer := 72; -- atleast 4 (1x up), or 8 (2x up) larger than highest delay
+constant beamforming_buffer_length: integer := 60*NUM_SAMPLES*INTERP_FACTOR; -- atleast 4 (1x up), or 8 (2x up) larger than highest delay
 constant baseline: unsigned(7 downto 0) := x"80";
 constant phased_sum_bits: integer := 8; --8. trying 7 bit lut
 constant phased_sum_length: integer := NUM_SAMPLES*INTERP_FACTOR;

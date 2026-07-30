@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import json
 
 beam_colors=[plt.cm.tab20(i) for i in range(12)]
-
+num_samples = 8
+num_powers = 4
 def get_peak_average_power(trace,window=24):
     pows=trace*trace
     peak=0
@@ -17,62 +18,62 @@ input_data=np.loadtxt("data/plot_input_pa_waveforms.txt")
 
 f=open("data/output_upsampled.txt")
 up_data=np.zeros((4,2048*2))
-for i in range(int(2048*2/32)):
+for i in range(int(2048/(4*num_samples))):
     line=f.readline()
-    vals=(line.split(" "))[0:32]
+    vals=(line.split(" "))[0:4*num_samples*2]
 
-    for j in range(32):
+    for j in range(4*num_samples*2):
         if "X" in vals[j]:
             val=-40
         else:
             val=(int(vals[j],2)-128)
-        ch=int(np.trunc(j/8))
-        sam=8*i+(7-j % 8)
+        ch=int(np.trunc(j/(num_samples*2)))
+        sam=num_samples*2*i+(num_samples*2-1-(j % (num_samples*2)))
         up_data[ch][sam]=val
 
 f=open("data/output_beamformed.txt")
 beam_data=np.zeros((12,2048*2))
-for i in range(int(2048*2/32)):
+for i in range(int(2048/(4*num_samples))):
     line=f.readline()
-    vals=(line.split(" "))[0:12*8]
+    vals=(line.split(" "))[0:12*num_samples*2]
 
-    for j in range(12*8):
+    for j in range(12*num_samples*2):
         if "X" in vals[j]:
             val=-40
         else:
             val=(int(vals[j],2)-128)
-        bm=int(np.trunc(j/8))
-        sam=8*i+(7-j % 8)
+        bm=int(np.trunc(j/(num_samples*2)))
+        sam=num_samples*2*i+(num_samples*2-1-(j % (num_samples*2)))
         beam_data[bm][sam]=val
 
 f=open("data/output_power.txt")
-power_data=np.zeros((12,512))
-for i in range(128):
+power_data=np.zeros((12,int(2048/(num_samples)*num_powers)))
+for i in range(int(2048/(num_samples*2))):
     line=f.readline()
 
     if "X" in line:
-        for j in range(12*2):
-            bm=int(np.trunc(j/2))
-            sam=2*i+(1-j % 2)
+        for j in range(12*num_powers):
+            bm=int(np.trunc(j/num_powers))
+            sam=num_powers*i+(num_powers-1-(j% (num_powers)))
             power_data[bm][sam]=0
 
     else:
         vals=(line.split(" "))
-        for j in range(12*2):
+        for j in range(12*num_powers):
             val=(int(vals[j],2))
-            bm=int(np.trunc(j/2))
-            sam=2*i+(1-j % 2)
+            bm=int(np.trunc(j/num_powers))
+            sam=num_powers*i+(num_powers-1-(j % (num_powers)))
             power_data[bm][sam]=val
 
-trigs=np.loadtxt("data/output_trigger.txt")
+trigs=np.loadtxt("data/output_power_trigger.txt", usecols=[0,1,2,3],unpack=True)[2]
 
-f=.472
+f=1
 beams=list(np.arange(0,12,1))
 t_base=np.arange(0,2048,1)/f
 t_up=np.arange(0,2048,.5)/f
 t_beamformed=np.arange(0,2048,.5)/f
-t_power=np.arange(0,1024,2)/f
-t_trig=np.arange(0,2048,4)/f
+t_power=np.arange(0,2048,num_samples/num_powers)/f
+t_trig=np.arange(0,2048,8)/f
 
 ts_base=np.arange(0,2048,1)
 ts_up=np.arange(0,2048,.5)

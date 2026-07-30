@@ -67,6 +67,12 @@ architecture rtl of power_integration is
     signal power_sum_10 : power_array:=(others=>(others=>'0')); --partial power integration (samples 40-43)
     signal power_sum_11 : power_array:=(others=>(others=>'0')); --partial power integration (samples 44-47)
     signal power_sum_12 : power_array:=(others=>(others=>'0')); --partial power integration (samples 48-51)
+    signal power_sum_13 : power_array:=(others=>(others=>'0')); --partial power integration (samples 52-55)
+    signal power_sum_14 : power_array:=(others=>(others=>'0')); --partial power integration (samples 56-59)
+    signal power_sum_15 : power_array:=(others=>(others=>'0')); --partial power integration (samples 60-63)
+    signal power_sum_16 : power_array:=(others=>(others=>'0')); --partial power integration (samples 64-67)
+
+
 
     type bigger_power_array is array (NUM_BEAMS-1 downto 0) of unsigned(19 downto 0);
 
@@ -158,6 +164,11 @@ begin
         power_sum_10 <= (others=>(others=>'0'));
         power_sum_11 <= (others=>(others=>'0'));
         power_sum_12 <= (others=>(others=>'0'));
+        power_sum_13 <= (others=>(others=>'0'));
+        power_sum_14 <= (others=>(others=>'0'));
+        power_sum_15 <= (others=>(others=>'0'));
+        power_sum_16 <= (others=>(others=>'0'));
+
 
         --power_sum_a <= (others=>(others=>'0'));
         --power_sum_b <= (others=>(others=>'0'));
@@ -179,18 +190,55 @@ begin
         avg_power <= (others=>(others=>(others=>'0')));
     elsif rising_edge(clk_data_i) and (enable_i='1') then
         for i in 0 to NUM_BEAMS-1 loop
-
-
             -- create sliding window of 4 samples (at 2GHz = 2ns step) TODO: refactor for timing, num samples = 4 interp factor = 2
             power_sum_0(i)<=resize(phased_power(i,0),num_power_bits)+resize(phased_power(i,1),num_power_bits)+resize(phased_power(i,2),num_power_bits)+resize(phased_power(i,3),num_power_bits);
             power_sum_1(i)<=resize(phased_power(i,4),num_power_bits)+resize(phased_power(i,5),num_power_bits)+resize(phased_power(i,6),num_power_bits)+resize(phased_power(i,7),num_power_bits);
             
-            if NUM_SAMPLES*INTERP_FACTOR = 16 then
+
+            if NUM_SAMPLES*INTERP_FACTOR = 16 and NUM_POWERS = 4 then
                 power_sum_2(i)<=resize(phased_power(i,8),num_power_bits)+resize(phased_power(i,9),num_power_bits)+resize(phased_power(i,10),num_power_bits)+resize(phased_power(i,11),num_power_bits);
                 power_sum_3(i)<=resize(phased_power(i,12),num_power_bits)+resize(phased_power(i,13),num_power_bits)+resize(phased_power(i,14),num_power_bits)+resize(phased_power(i,15),num_power_bits);
-            else
+            
+                power_sum_4(i) <= power_sum_0(i);
+                power_sum_5(i) <= power_sum_1(i);
+                power_sum_6(i) <= power_sum_2(i);
+                power_sum_7(i) <= power_sum_3(i);
+                power_sum_8(i) <= power_sum_4(i);
+                power_sum_9(i) <= power_sum_5(i);
+                power_sum_10(i) <= power_sum_6(i);
+                power_sum_11(i) <= power_sum_7(i);
+                power_sum_12(i) <= power_sum_8(i);
+                power_sum_13(i) <= power_sum_9(i);
+                power_sum_14(i) <= power_sum_10(i);
+
+
+                running_sum_a(i) <= running_sum_a(i) + power_sum_0(i) + power_sum_1(i) + power_sum_2(i) + power_sum_3(i) 
+                                    - power_sum_8(i) - power_sum_9(i) - power_sum_10(i) - power_sum_11(i);
+                running_sum_b(i) <= running_sum_b(i) + power_sum_1(i) + power_sum_2(i) + power_sum_3(i) + power_sum_4(i) 
+                                    - power_sum_9(i) - power_sum_10(i) - power_sum_11(i) - power_sum_12(i);
+                running_sum_c(i) <= running_sum_c(i) + power_sum_2(i) + power_sum_3(i) + power_sum_4(i) + power_sum_5(i) 
+                                    - power_sum_10(i) - power_sum_11(i) - power_sum_12(i) - power_sum_13(i);
+                running_sum_d(i) <= running_sum_d(i) + power_sum_3(i) + power_sum_4(i) + power_sum_5(i) + power_sum_6(i) 
+                                    - power_sum_11(i) - power_sum_12(i) - power_sum_13(i) - power_sum_14(i);
+
+
+            
+            else -- erg, default 4 samples and 2 powers for now. add in other options if different ones neededNUM_SAMPLES*INTERP_FACTOR = 4 and NUM_POWERS = 2
                 power_sum_2(i) <= power_sum_0(i);
                 power_sum_3(i) <= power_sum_1(i);
+                power_sum_4(i) <= power_sum_2(i);
+                power_sum_5(i) <= power_sum_3(i);
+                power_sum_6(i) <= power_sum_4(i);
+                power_sum_7(i) <= power_sum_5(i);
+                power_sum_8(i) <= power_sum_6(i);
+                power_sum_9(i) <= power_sum_7(i);
+                power_sum_10(i) <= power_sum_8(i);
+                power_sum_11(i) <= power_sum_9(i);
+                power_sum_12(i) <= power_sum_10(i);
+
+                running_sum_a(i) <= running_sum_a(i) + power_sum_0(i) + power_sum_1(i) - power_sum_8(i) - power_sum_9(i);
+                running_sum_b(i) <= running_sum_b(i) + power_sum_1(i) + power_sum_2(i) - power_sum_9(i) - power_sum_10(i);
+
             end if;
             -- num_samples=8 and interp_factor=2
             --power_sum_2(i)<=resize(phased_power(i,8),num_power_bits)+resize(phased_power(i,9),num_power_bits)+resize(phased_power(i,10),num_power_bits)+resize(phased_power(i,11),num_power_bits);
@@ -202,18 +250,6 @@ begin
 
             --shift smaller sums along
 
-            power_sum_4(i) <= power_sum_2(i);
-            power_sum_5(i) <= power_sum_3(i);
-            power_sum_6(i) <= power_sum_4(i);
-            power_sum_7(i) <= power_sum_5(i);
-            power_sum_8(i) <= power_sum_6(i);
-            power_sum_9(i) <= power_sum_7(i);
-            power_sum_10(i) <= power_sum_8(i);
-            power_sum_11(i) <= power_sum_9(i);
-            power_sum_12(i) <= power_sum_10(i);
-
-            running_sum_a(i) <= running_sum_a(i) + power_sum_0(i) + power_sum_1(i) - power_sum_8(i) - power_sum_9(i);
-            running_sum_b(i) <= running_sum_b(i) + power_sum_1(i) + power_sum_2(i) - power_sum_9(i) - power_sum_10(i);
 
 
             --add together powers in the 32 samples (at 2GHz = 16 ns integration windows) TODO: refactor for timing
@@ -238,9 +274,6 @@ begin
 
 
             if NUM_POWERS = 4 then
-                running_sum_c(i) <= running_sum_c(i) + power_sum_2(i) + power_sum_3(i) - power_sum_10(i) - power_sum_11(i);
-                running_sum_d(i) <= running_sum_d(i) + power_sum_3(i) + power_sum_4(i) - power_sum_11(i) - power_sum_12(i);
-
 
                 if (running_sum_c(i)(4 downto 0))>=x"10" then
                     avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length)+1;

@@ -1,5 +1,7 @@
 import numpy as np
 
+samples_per_clock = 8
+
 #nuradiomc dah dah dah
 
 ch_data = np.zeros((4,2048), dtype=int) + 128
@@ -8,7 +10,7 @@ ch_data = np.zeros((4,2048), dtype=int) + 128
 #ch2_data=np.zeros(1024,dtype=int)+128
 #ch3_data=np.zeros(1024,dtype=int)+128
 
-ch_data[0,80]=128+32
+ch_data[0,81]=128+32
 #ch_data[0,81]=128-32
 
 #ch_data[1,80]=128+32
@@ -26,15 +28,18 @@ if False:
     ch3_data=np.pad(ch3_data,pad_width=(0,1024-len(ch3_data)),constant_values=128).astype(int)
 
 np.savetxt("data/plot_input_pa_waveforms.txt", ch_data)
-print(len(ch_data))
 
-ch_cond=ch_data.reshape((4,512,4))
+
+ch_cond=ch_data.reshape((4,int(2048/samples_per_clock),samples_per_clock))
 #ch0_cond=ch0_data.reshape((256,4))
 #ch1_cond=ch1_data.reshape((256,4))
 #ch2_cond=ch2_data.reshape((256,4))
 #ch3_cond=ch3_data.reshape((256,4))
 
-ch_vals=np.zeros((4,512),dtype=int)
+ch_vals=np.zeros((4,int(2048/samples_per_clock)), dtype=int)
+ch_vals8=np.zeros((4,int(2048/samples_per_clock)), dtype=int)
+
+
 #ch0_vals=np.zeros(256,dtype=int)
 #ch1_vals=np.zeros(256,dtype=int)
 #ch2_vals=np.zeros(256,dtype=int)
@@ -42,8 +47,12 @@ ch_vals=np.zeros((4,512),dtype=int)
 
 #order gets flipped going into vhdl modules... here is [0, 1, 2, ..., 30, 31] but in fpga land its [31,30,...,2,1,0]
 for ch in range(4):
-    for i in range(512):
-        ch_vals[ch,i]=(ch_cond[ch][i][3])+(ch_cond[ch][i][2]<<8)+(ch_cond[ch][i][1]<<16)+(ch_cond[ch][i][0]<<24)
+    for i in range(int(2048/samples_per_clock)):
+        if samples_per_clock == 4:
+            ch_vals[ch,i]=(ch_cond[ch][i][3])+(ch_cond[ch][i][2]<<8)+(ch_cond[ch][i][1]<<16)+(ch_cond[ch][i][0]<<24)
+        elif samples_per_clock == 8:
+            ch_vals8[ch,i]=(ch_cond[ch][i][7])+(ch_cond[ch][i][6]<<8)+(ch_cond[ch][i][5]<<16)+(ch_cond[ch][i][4]<<24)
+            ch_vals[ch,i]=(ch_cond[ch][i][3])+(ch_cond[ch][i][2]<<8)+(ch_cond[ch][i][1]<<16)+(ch_cond[ch][i][0]<<24)
 
 #for i in range(256):
 #    ch0_vals[i]=(ch0_cond[i][3])+(ch0_cond[i][2]<<8)+(ch0_cond[i][1]<<16)+(ch0_cond[i][0]<<24)
@@ -54,13 +63,15 @@ for ch in range(4):
 #print((ch0_vals[0]&0xff))
 
 f=open("data/input_pa_waveforms.txt",mode="w")
-for i in range(512):
+for i in range(int(2048/samples_per_clock)):
 
     save_string=f""
-
     for ch in range(4):
-        save_string+=f"{ch_vals[ch][i]:032b} "
-    if i!=512-1:
+        if samples_per_clock==4:
+            save_string+=f"{ch_vals[ch][i]:032b} "
+        elif samples_per_clock == 8:
+            save_string+=f"{ch_vals8[ch][i]:032b}{ch_vals[ch][i]:032b} "
+    if i!=int(2048/samples_per_clock)-1:
         save_string+=f"\n"
     
     f.write(save_string)
