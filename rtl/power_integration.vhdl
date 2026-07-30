@@ -1,3 +1,18 @@
+--
+--
+--
+--
+-- Input is mapped like Bm11 data (S7, S6, S5, S4, S3, S2, S1, S0) -> Bm0 (S7, S6, S5, S4, S3, S2, S1, S0), at 8-bit samples each
+-- Output is mapped like Bm11 data (Avg 1, Avg 0) -> Bm0 data (Avg 1, Avg 0) at 16-bit samples each
+--
+--
+--
+--
+--
+--
+
+
+
 library IEEE;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -48,28 +63,21 @@ architecture rtl of power_integration is
     signal power_sum_6 : power_array:=(others=>(others=>'0')); --partial power integration (samples 24-27)
     signal power_sum_7 : power_array:=(others=>(others=>'0')); --partial power integration (samples 28-31)
     signal power_sum_8 : power_array:=(others=>(others=>'0')); --partial power integration (samples 32-35)
-    signal power_sum_9 : power_array:=(others=>(others=>'0')); --partial power integration (samples 32-35)
-    signal power_sum_10 : power_array:=(others=>(others=>'0')); --partial power integration (samples 32-35)
-
-
-
-
-    --signal power_sum_9 : power_array:=(others=>(others=>'0')); --partial power integration (samples 36-39)
-    --signal power_sum_a : power_array:=(others=>(others=>'0')); --partial power integration (samples 40-43)
+    signal power_sum_9 : power_array:=(others=>(others=>'0')); --partial power integration (samples 36-39)
+    signal power_sum_10 : power_array:=(others=>(others=>'0')); --partial power integration (samples 40-43)
+    signal power_sum_11 : power_array:=(others=>(others=>'0')); --partial power integration (samples 44-47)
+    signal power_sum_12 : power_array:=(others=>(others=>'0')); --partial power integration (samples 48-51)
 
     type bigger_power_array is array (NUM_BEAMS-1 downto 0) of unsigned(19 downto 0);
 
     signal running_sum_a: bigger_power_array:=(others=>(others=>'0'));
     signal running_sum_b : bigger_power_array:=(others=>(others=>'0'));
+    signal running_sum_c : bigger_power_array:=(others=>(others=>'0'));
+    signal running_sum_d : bigger_power_array:=(others=>(others=>'0'));
 
 
-    signal power_sum_a : bigger_power_array:=(others=>(others=>'0')); --partial power integration (zero offset)
-    signal power_sum_b : bigger_power_array:=(others=>(others=>'0')); --partial power integration (zero offset)
-    --signal power_sum_10 : bigger_power_array:=(others=>(others=>'0')); --partial power integration (zero offset)
-
-    --signal power_sum_11 : bigger_power_array:=(others=>(others=>'0')); --partial power integration (4 sample offset)
-    --signal power_sum_12 : bigger_power_array:=(others=>(others=>'0')); --partial power integration (8 sample offset)
-    --signal power_sum_13 : bigger_power_array:=(others=>(others=>'0')); --partial power integration (12 sample offset)
+    --signal power_sum_a : bigger_power_array:=(others=>(others=>'0')); --partial power integration (zero offset)
+    --signal power_sum_b : bigger_power_array:=(others=>(others=>'0')); --partial power integration (zero offset)
 
     --add two more overlap to having a single sample sliding window. seems to be better
     type avg_power_array is array (NUM_BEAMS-1 downto 0, NUM_POWERS-1 downto 0) of unsigned(15 downto 0);
@@ -91,12 +99,12 @@ assign_beam_i: for bm in 0 to NUM_BEAMS-1 generate
 end generate;
 
 assign_power_o: for bm in 0 to NUM_BEAMS-1 generate
-    --assign_powers_o: for pow in 0 to NUM_POWERS-1 generate
-    --    power_o(POWER_LENGTH*pow*bm+POWER_LENGTH*pow-1 downto POWER_LENGTH*pow*bm+POWER_LENGTH*pow) <= std_logic_vector(avg_power(pow,bm));
-    --end generate;
+    assign_powers_o: for pow in 0 to NUM_POWERS-1 generate
+        power_o(POWER_LENGTH*NUM_POWERS*bm+POWER_LENGTH*(pow+1)-1 downto POWER_LENGTH*NUM_POWERS*bm+POWER_LENGTH*pow) <= std_logic_vector(avg_power(bm,pow));
+    end generate;
 
-    power_o(2*16*bm+16-1 downto 2*16*bm) <= std_logic_vector(avg_power(bm,0));
-    power_o(2*16*bm+32-1 downto 2*16*bm+16) <= std_logic_vector(avg_power(bm,1));
+    --power_o(2*16*bm+16-1 downto 2*16*bm) <= std_logic_vector(avg_power(bm,0));
+    --power_o(2*16*bm+32-1 downto 2*16*bm+16) <= std_logic_vector(avg_power(bm,1));
     --power_o(4*14*bm+42-1 downto 4*14*bm+28) <= (others=>'0'); -- std_logic_vector(avg_power2(bm));
     --power_o(4*14*bm+56-1 downto 4*14*bm+42) <= (others=>'0'); -- std_logic_vector(avg_power3(bm));
 end generate;
@@ -137,7 +145,7 @@ end process;
 proc_avg_beam_power : process(rst_i, clk_data_i, enable_i)
 begin		
 
-    if rst_i then
+    if rst_i = '1' or enable_i = '0' then
         power_sum_0 <= (others=>(others=>'0'));
         power_sum_1 <= (others=>(others=>'0'));
         power_sum_2 <= (others=>(others=>'0'));
@@ -147,16 +155,21 @@ begin
         power_sum_6 <= (others=>(others=>'0'));
         power_sum_7 <= (others=>(others=>'0'));
         power_sum_8 <= (others=>(others=>'0'));
-
         power_sum_10 <= (others=>(others=>'0'));
-        power_sum_a <= (others=>(others=>'0'));
-        power_sum_b <= (others=>(others=>'0'));
+        power_sum_11 <= (others=>(others=>'0'));
+        power_sum_12 <= (others=>(others=>'0'));
+
+        --power_sum_a <= (others=>(others=>'0'));
+        --power_sum_b <= (others=>(others=>'0'));
         --power_sum_11 <= (others=>(others=>'0'));
         --power_sum_12 <= (others=>(others=>'0'));
         --power_sum_13 <= (others=>(others=>'0'));
 
         running_sum_a <= (others=>(others=>'0'));
         running_sum_b <= (others=>(others=>'0'));
+        running_sum_c <= (others=>(others=>'0'));
+        running_sum_d <= (others=>(others=>'0'));
+
 
         --avg_power0 <= (others=>(others=>'0'));
         --avg_power1 <= (others=>(others=>'0'));
@@ -172,6 +185,13 @@ begin
             power_sum_0(i)<=resize(phased_power(i,0),num_power_bits)+resize(phased_power(i,1),num_power_bits)+resize(phased_power(i,2),num_power_bits)+resize(phased_power(i,3),num_power_bits);
             power_sum_1(i)<=resize(phased_power(i,4),num_power_bits)+resize(phased_power(i,5),num_power_bits)+resize(phased_power(i,6),num_power_bits)+resize(phased_power(i,7),num_power_bits);
             
+            if NUM_SAMPLES*INTERP_FACTOR = 16 then
+                power_sum_2(i)<=resize(phased_power(i,8),num_power_bits)+resize(phased_power(i,9),num_power_bits)+resize(phased_power(i,10),num_power_bits)+resize(phased_power(i,11),num_power_bits);
+                power_sum_3(i)<=resize(phased_power(i,12),num_power_bits)+resize(phased_power(i,13),num_power_bits)+resize(phased_power(i,14),num_power_bits)+resize(phased_power(i,15),num_power_bits);
+            else
+                power_sum_2(i) <= power_sum_0(i);
+                power_sum_3(i) <= power_sum_1(i);
+            end if;
             -- num_samples=8 and interp_factor=2
             --power_sum_2(i)<=resize(phased_power(i,8),num_power_bits)+resize(phased_power(i,9),num_power_bits)+resize(phased_power(i,10),num_power_bits)+resize(phased_power(i,11),num_power_bits);
             --power_sum_3(i)<=resize(phased_power(i,12),num_power_bits)+resize(phased_power(i,13),num_power_bits)+resize(phased_power(i,14),num_power_bits)+resize(phased_power(i,15),num_power_bits);
@@ -181,8 +201,7 @@ begin
             --power_sum_3(i)<=resize(phased_power(i,6),num_power_bits)+resize(phased_power(i,7),num_power_bits);
 
             --shift smaller sums along
-            power_sum_2(i) <= power_sum_0(i);
-            power_sum_3(i) <= power_sum_1(i);
+
             power_sum_4(i) <= power_sum_2(i);
             power_sum_5(i) <= power_sum_3(i);
             power_sum_6(i) <= power_sum_4(i);
@@ -190,17 +209,19 @@ begin
             power_sum_8(i) <= power_sum_6(i);
             power_sum_9(i) <= power_sum_7(i);
             power_sum_10(i) <= power_sum_8(i);
+            power_sum_11(i) <= power_sum_9(i);
+            power_sum_12(i) <= power_sum_10(i);
 
             running_sum_a(i) <= running_sum_a(i) + power_sum_0(i) + power_sum_1(i) - power_sum_8(i) - power_sum_9(i);
             running_sum_b(i) <= running_sum_b(i) + power_sum_1(i) + power_sum_2(i) - power_sum_9(i) - power_sum_10(i);
 
+
             --add together powers in the 32 samples (at 2GHz = 16 ns integration windows) TODO: refactor for timing
-            power_sum_a(i)<=resize(power_sum_0(i),20)+power_sum_1(i)+power_sum_2(i)+power_sum_3(i)+power_sum_4(i)+power_sum_5(i)+power_sum_6(i)+power_sum_7(i);
-            power_sum_b(i)<=resize(power_sum_1(i),20)+power_sum_2(i)+power_sum_3(i)+power_sum_4(i)+power_sum_5(i)+power_sum_6(i)+power_sum_7(i)+power_sum_8(i);
+            --power_sum_a(i)<=resize(power_sum_0(i),20)+power_sum_1(i)+power_sum_2(i)+power_sum_3(i)+power_sum_4(i)+power_sum_5(i)+power_sum_6(i)+power_sum_7(i);
+            --power_sum_b(i)<=resize(power_sum_1(i),20)+power_sum_2(i)+power_sum_3(i)+power_sum_4(i)+power_sum_5(i)+power_sum_6(i)+power_sum_7(i)+power_sum_8(i);
 
             --power_sum_12(i)<=resize(power_sum_2(i),20)+power_sum_3(i)+power_sum_4(i)+power_sum_5(i);
             --power_sum_13(i)<=resize(power_sum_3(i),20)+power_sum_4(i)+power_sum_5(i)+power_sum_6(i);
-
 
 
             if (running_sum_a(i)(4 downto 0))>=x"10" then
@@ -216,20 +237,23 @@ begin
             end if;
 
 
-            /*
+            if NUM_POWERS = 4 then
+                running_sum_c(i) <= running_sum_c(i) + power_sum_2(i) + power_sum_3(i) - power_sum_10(i) - power_sum_11(i);
+                running_sum_d(i) <= running_sum_d(i) + power_sum_3(i) + power_sum_4(i) - power_sum_11(i) - power_sum_12(i);
 
-            if (running_sum_c(i)(4 downto 0))>=x"10" then
-                avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
-            else
-                avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length);
-            end if;
 
-            if (running_sum_d(i)(4 downto 0))>=x"10" then
-                avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
-            else
-                avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length);
+                if (running_sum_c(i)(4 downto 0))>=x"10" then
+                    avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
+                else
+                    avg_power(i,2)<=resize(unsigned(running_sum_c(i)(running_sum_c(0)'length-1 downto 5)),avg_power(0,0)'length);
+                end if;
+
+                if (running_sum_d(i)(4 downto 0))>=x"10" then
+                    avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length)+1;
+                else
+                    avg_power(i,3)<=resize(unsigned(running_sum_d(i)(running_sum_d(0)'length-1 downto 5)),avg_power(0,0)'length);
+                end if;
             end if;
-            */
 
         end loop;
     end if;
